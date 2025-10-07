@@ -1,0 +1,96 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Knitto Backend Boilerplate Typescript
+
+## Struktur Project
+Boilerplate ini menggunakan struktur sebagai berikut:
+```
+/ root directory
+├─ database         # digunakan untuk migration database
+├─ src              # source program
+│  ├─ app           # folder jenis aplikasi yang dibuat
+│  │  ├─ background # aplikasi yang bersifat background (timer, scheduler, emitter, dll)
+│  │  ├─ http       # aplikasi http (rest-api)
+│  │  │  ├─ [nama-path-http]
+│  │  │  │  └─ namaController
+│  │  │  │  ├─ [namaController].controller.ts
+│  │  │  │  ├─ [namaController].request.ts
+│  │  │  │  ├─ [namaController].routes.ts
+│  │  │  │  └─ [namaController].spec.ts
+│  │  │  ├─ index.ts # file konfigurasi server http
+│  │  │  └─ middlewares
+│  │  │     └─ namaMiddleware.ts
+│  │  ├─ messageBroker  # aplikasi penghubung ke message broker
+│  │  │  ├─ index.ts    # konfigurasi aplikasi message broker
+│  │  │  ├─ publishers  # publisher
+│  │  │  └─ subscribers # subscribers
+│  │  └─ ws             # aplikasi web socket
+│  ├─ index.ts          # starting point aplikasi
+│  ├─ libs              # source code pendukung aplikasi
+│  │  ├─ config         # configurasi dan constans
+│  │  ├─ helpers        # function-function general seperti stringFormatter, dateFormatter dll
+│  │  └─ types          # general types (semua file disini gunakan format .d.ts)
+│  ├─ shared            # kumpulan kode logic aplikasi reusable
+│  ├─ repositories      # layer akses data 
+├─ storage              # tempat penyimpanan file-file
+│  └─ static            # file yang tidak akan berubah secara dinamis
+│     ├─ private        # file yang hanya bisa diakses oleh aplikasi
+│     └─ public         # file yang bisa diakses tanpa melalui aplikasi
+└─ tests                # test file
+```
+
+## Package Utama yang Digunakan
+1. **Core Knitto Packages**:
+   - `@knittotextile/knitto-core-backend`: Core framework backend Knitto
+   - `@knittotextile/knitto-http`: HTTP library
+   - `@knittotextile/knitto-mysql`: MySQL library
+   - `@knittotextile/knitto-rabbitmq`: RabbitMQ library
+
+2. **Framework & Utilities**:
+   - `express-jsdoc-swagger`: Dokumentasi API
+   - `jsonwebtoken`: JWT authentication
+   - `bcryptjs`: Password hashing
+   - `dotenv`: Environment variables
+   - `valibot`: Validasi data
+   - `moment`: Manipulasi tanggal dan waktu
+   - `lodash`: Utility functions
+   - `socket.io`: Websocket
+
+3. **Development Tools**:
+   - `typescript`: Type system
+   - `tsx`: TS executor
+   - `jest`: Testing
+   - `eslint`: Linter
+   - `husky`: Git hooks
+   - `module-alias`: Path aliases
+
+## Module Alias
+Project menggunakan module alias untuk memudahkan import:
+- `@`: ./src/
+- `@http`: ./src/app/http/
+- `@httpController`: ./src/app/http/controller/
+- `@repositories`: ./src/repositories/
+- `@libs`: ./src/libs/
+- `@services`: ./src/services/
+
+## Fitur Boilerplate
+1. HTTP Server (REST API)
+2. Background tasks (daemon, scheduler)
+3. Message Broker integration
+4. WebSocket support
+5. MySQL database connection
+6. Swagger API documentation
+
+## Development Guidelines
+1. Penamaan file dan folder menggunakan `camelCase`
+2. Menggunakan conventional commits
+3. Node.js v20.11.1
+4. PNPM sebagai package manager
+5. Flow Git untuk development fitur dan bugfix
+
+## Testing
+Testing menggunakan Jest. Test file ditempatkan di direktori `tests/` atau bersama dengan file yang diuji dengan nama `.spec.ts`.

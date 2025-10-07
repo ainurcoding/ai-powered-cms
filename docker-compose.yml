@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  app:
+    image: rest_boilerplate
+    restart: always
+    volumes:
+      - ./storage:/app/storage
+    working_dir: /app
+    ports:
+      - ${APP_PORT_HTTP}:8000
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
+      - APP_PORT_HTTP=${APP_PORT_HTTP}
+      - APP_EXPOSE_DOCS=${APP_EXPOSE_DOCS}
+      - DB_HOST_POSTGRES=${DB_HOST_POSTGRES}
+      - DB_NAME_POSTGRES=${DB_NAME_POSTGRES}
+      - DB_USER_POSTGRES=${DB_USER_POSTGRES}
+      - DB_PASS_POSTGRES=${DB_PASS_POSTGRES}
+      - DB_PORT_POSTGRES=${DB_PORT_POSTGRES}
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${DB_PASS_POSTGRES}
+      - POSTGRES_DB=${DB_NAME_POSTGRES}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - ${DB_PORT_POSTGRES}:5432
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
