@@ -4,7 +4,7 @@
 	"main": "index.ts",
 	"scripts": {
 		"prepare": "husky || true",
-		"build": "rm -fr dist/* && npx tsc",
+		"build": "if exist dist rmdir /s /q dist && npx tsc",
 		"start": "node dist/index.js",
 		"start:docker": "docker build -t ai_cms_backend:latest . && docker compose up -d",
 		"stop:docker": "docker compose down",

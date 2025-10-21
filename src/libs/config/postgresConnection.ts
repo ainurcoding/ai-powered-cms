@@ -4,7 +4,6 @@ import logger from '../core/logger';
 
 class PostgresConnector {
 	private pool: Pool;
-	private isInitialized: boolean = false;
 
 	constructor() {
 		this.pool = new Pool({
@@ -38,7 +37,6 @@ class PostgresConnector {
 			const client = await this.pool.connect();
 			logger.info('PostgreSQL connection established successfully');
 			client.release();
-			this.isInitialized = true;
 		} catch (error) {
 			logger.error('Failed to connect to PostgreSQL', error);
 			throw error;
