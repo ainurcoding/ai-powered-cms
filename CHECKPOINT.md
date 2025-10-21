@@ -22,6 +22,185 @@ Project boilerplate berhasil di-refactor dari Knitto internal packages menjadi u
 
 **Status**: ✅ **READY TO USE** - Boilerplate siap untuk project baru!
 
+---
+
+## 🚀 **PHASE 1: CORE CMS DEVELOPMENT** (STARTED)
+
+**Tanggal Mulai**: 21 Oktober 2025  
+**Status**: 🟡 **IN PROGRESS** - Development Phase 1
+
+### **Phase 1 Goals: Core CMS Features (Weeks 1-2)**
+
+#### **Week 1: Posts Management System**
+- [ ] **Posts CRUD Operations**
+  - [ ] Create post endpoint (`POST /posts`)
+  - [ ] List posts with pagination (`GET /posts`)
+  - [ ] Get single post (`GET /posts/:id`)
+  - [ ] Update post (`PUT /posts/:id`)
+  - [ ] Delete post (`DELETE /posts/:id`)
+  - [ ] Draft system (save as draft)
+
+- [ ] **Rich Text Editor Integration**
+  - [ ] HTML content support
+  - [ ] Image upload for posts
+  - [ ] Content validation
+  - [ ] Preview functionality
+
+- [ ] **Database Schema**
+  - [ ] Create `posts` table with UUID
+  - [ ] Add relationships (user_id, category_id)
+  - [ ] Add timestamps (created_at, updated_at)
+  - [ ] Add status field (draft, published, archived)
+
+#### **Week 2: Categories & Tags System**
+- [ ] **Categories Management**
+  - [ ] Categories CRUD operations
+  - [ ] Hierarchical categories (parent-child)
+  - [ ] Category slug generation
+  - [ ] Category description & metadata
+
+- [ ] **Tags System**
+  - [ ] Tags CRUD operations
+  - [ ] Auto-tagging suggestions
+  - [ ] Tag cloud functionality
+  - [ ] Tag-based filtering
+
+- [ ] **Content Organization**
+  - [ ] Post-category relationships
+  - [ ] Post-tag relationships
+  - [ ] Filtering by category/tag
+  - [ ] Search functionality
+
+#### **Week 3: Media Management**
+- [ ] **File Upload System**
+  - [ ] Image upload endpoint
+  - [ ] File type validation
+  - [ ] File size limits
+  - [ ] Multiple file upload
+
+- [ ] **Media Library**
+  - [ ] Media CRUD operations
+  - [ ] Image optimization
+  - [ ] Thumbnail generation
+  - [ ] Media metadata
+
+- [ ] **Cloud Storage Integration**
+  - [ ] AWS S3 integration (optional)
+  - [ ] Local storage fallback
+  - [ ] CDN support
+  - [ ] File serving optimization
+
+#### **Week 4: Admin Dashboard & User Management**
+- [ ] **Admin Dashboard**
+  - [ ] Content overview statistics
+  - [ ] Recent posts list
+  - [ ] User activity logs
+  - [ ] System health monitoring
+
+- [ ] **User Management**
+  - [ ] User registration endpoint
+  - [ ] User profile management
+  - [ ] Role assignment system
+  - [ ] User activity tracking
+
+- [ ] **Permission System**
+  - [ ] Role-based access control
+  - [ ] Permission middleware
+  - [ ] Content ownership
+  - [ ] Admin-only features
+
+### **Technical Implementation Plan**
+
+#### **Database Schema Design**
+```sql
+-- Posts table
+CREATE TABLE posts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    content TEXT,
+    excerpt TEXT,
+    status VARCHAR(20) DEFAULT 'draft',
+    featured_image VARCHAR(500),
+    author_id UUID REFERENCES users(id),
+    category_id UUID REFERENCES categories(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Categories table
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    parent_id UUID REFERENCES categories(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tags table
+CREATE TABLE tags (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Post-Tag relationships
+CREATE TABLE post_tags (
+    post_id UUID REFERENCES posts(id),
+    tag_id UUID REFERENCES tags(id),
+    PRIMARY KEY (post_id, tag_id)
+);
+```
+
+#### **API Endpoints Structure**
+```
+/posts
+├── GET    /posts           # List posts with pagination
+├── POST   /posts           # Create new post
+├── GET    /posts/:id       # Get single post
+├── PUT    /posts/:id       # Update post
+└── DELETE /posts/:id       # Delete post
+
+/categories
+├── GET    /categories      # List categories
+├── POST   /categories      # Create category
+├── GET    /categories/:id  # Get category
+├── PUT    /categories/:id  # Update category
+└── DELETE /categories/:id  # Delete category
+
+/tags
+├── GET    /tags            # List tags
+├── POST   /tags            # Create tag
+├── GET    /tags/:id        # Get tag
+├── PUT    /tags/:id        # Update tag
+└── DELETE /tags/:id        # Delete tag
+
+/media
+├── POST   /media/upload    # Upload file
+├── GET    /media           # List media files
+├── GET    /media/:id       # Get media file
+└── DELETE /media/:id       # Delete media file
+```
+
+### **Success Criteria for Phase 1**
+- [ ] ✅ Complete Posts CRUD with rich text support
+- [ ] ✅ Categories & Tags system working
+- [ ] ✅ Media upload & management
+- [ ] ✅ Basic admin dashboard
+- [ ] ✅ User role management
+- [ ] ✅ API documentation updated
+- [ ] ✅ Database migrations ready
+- [ ] ✅ Unit tests for core features
+
+### **Next Phase Preview: AI Integration**
+- 🤖 AI content generation
+- 🏷️ Auto-tagging system
+- 📊 SEO optimization
+- 🔍 Smart search
+- 📈 Analytics dashboard
+
 **File Penting**:
 - `MIGRATION_SUMMARY.md` - Detail semua perubahan
 - `README.md` - Full documentation
