@@ -66,10 +66,31 @@ router.post(
  *
  * @example response - 200 - Sukses
  * {
- *   "message": "Success",
+ *   "message": "Logout berhasil",
  *   "result": null
  * }
  */
 router.get('/auth/logout', requestHandler(controller.logout));
+
+/**
+ * GET /auth/check-token
+ * @tags Auth
+ * @security BearerAuth
+ * @summary Check Token Status
+ * @description Endpoint ini digunakan untuk mengecek status token apakah masih valid atau sudah di-blacklist.
+ *
+ * @return {object} 200 - Sukses
+ *
+ * @example response - 200 - Sukses
+ * {
+ *   "message": "Success",
+ *   "result": {
+ *     "isValid": true,
+ *     "isBlacklisted": false,
+ *     "message": "Token masih valid"
+ *   }
+ * }
+ */
+router.get('/auth/check-token', requestHandler(controller.checkToken));
 
 export default router;

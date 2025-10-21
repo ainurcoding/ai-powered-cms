@@ -28,6 +28,21 @@ const guestPath: IGuestPathCfg[] = [
 		path: '/',
 		method: ['get']
 	},
+	{
+		path: '/health',
+		withSubPath: true,
+		method: []
+	},
+	{
+		path: '/docs',
+		withSubPath: true,
+		method: []
+	},
+	{
+		path: '/json-api-docs',
+		withSubPath: true,
+		method: []
+	}
 ];
 
 export default guestPath;

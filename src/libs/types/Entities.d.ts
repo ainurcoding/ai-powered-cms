@@ -1,14 +1,12 @@
 declare namespace Entity {
 	interface IUser {
-		id_user?: number
-		nama?: string
+		id?: string // UUID
+		name?: string
 		username?: string
+		email?: string
 		password?: string
-		level?: string
-		aktif?: boolean
-		status_login?: string
-		hint_password?: string
-		ip_address?: string
+		role?: string // ADMIN, USER, EDITOR
+		is_active?: boolean
 		created_at?: Date
 		updated_at?: Date
 	}

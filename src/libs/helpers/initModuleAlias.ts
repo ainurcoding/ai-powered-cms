@@ -3,12 +3,11 @@
  */
 
 import moduleAlias from 'module-alias';
-import { logger } from '@knittotextile/knitto-core-backend';
 import path from 'path';
 
 (async () => {
 	try {
-		if (path.basename(require.main.path) !== 'data:text') {
+		if (path.basename(require.main?.path ?? '') !== 'data:text') {
 			moduleAlias.addAliases({
 				'@': path.join(process.cwd(), 'dist'),
 				'@http': path.join(process.cwd(), 'dist/app/http/'),
@@ -25,7 +24,8 @@ import path from 'path';
 			moduleAlias();
 		}
 	} catch (error) {
-		logger.error(error);
-		process.exit(0);
+		// eslint-disable-next-line no-console
+		console.error('Module alias initialization error:', error);
+		process.exit(1);
 	}
 })();

@@ -6,6 +6,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import path from 'path';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 import logger from './logger';
 import { NODE_ENV } from '../config';
 
@@ -82,7 +83,9 @@ export class ExpressServer {
 					await loadRoutesFromDir(fullPath);
 				} else if (file.endsWith('.routes.ts') || file.endsWith('.routes.js')) {
 					try {
-						const route = await import(fullPath);
+						// Convert Windows path to file:// URL for dynamic import
+						const fileUrl = pathToFileURL(fullPath).href;
+						const route = await import(fileUrl);
 						const router: Router = route.default || route;
 
 						if (router && typeof router === 'function') {
@@ -104,7 +107,7 @@ export class ExpressServer {
 		await this.loadRoutes();
 
 		// 404 handler
-		this.app.use((req, res) => {
+		this.app.use((_req, res) => {
 			res.status(404).json({
 				message: 'Route not found',
 				result: null
