@@ -4,6 +4,7 @@ import { sendError } from '@/libs/core/response';
 import { APP_SECRET_KEY } from '@/libs/config';
 import postgresConnection from '@/libs/config/postgresConnection';
 import guestPath from '../config/guestPathHttp';
+import tokenBlacklist from '@/libs/core/tokenBlacklist';
 
 const authorizeMiddleware = async (
 	req: Request,
@@ -44,16 +45,22 @@ const authorizeMiddleware = async (
 	}
 
 	try {
+		// Check if token is blacklisted
+		if (tokenBlacklist.isBlacklisted(token[1])) {
+			sendError('Token has been revoked. Please login again.', 401, res);
+			return;
+		}
+
 		const decode: any = jwt.verify(token[1], APP_SECRET_KEY);
 
 		const user = await postgresConnection.queryOne<{
-			id_user: number;
-			nama: string;
+			id: string;
+			name: string;
 			username: string;
-			level: string;
+			role: string;
 		}>(
-			'SELECT id_user, nama, username, level FROM users WHERE id_user = $1',
-			[decode.id_user]
+			'SELECT id, name, username, role FROM users WHERE id = $1 AND is_active = true',
+			[decode.id]
 		);
 
 		if (!user) {
@@ -65,7 +72,7 @@ const authorizeMiddleware = async (
 			return;
 		}
 
-		req.userId = decode.id_user;
+		req.userId = decode.id;
 		req.userData = user;
 		next();
 	} catch (err) {

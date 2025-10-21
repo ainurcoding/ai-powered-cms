@@ -84,17 +84,17 @@ src/
 
 3. **Setup environment**
    ```bash
-   cp .env.example .env
+   cp env.example .env
    # Edit .env sesuai konfigurasi Anda
    ```
 
 4. **Setup database**
    ```bash
    # Buat database PostgreSQL
-   createdb your_database_name
+   podman exec -it postgres_16 psql -U postgres -c "CREATE DATABASE ai_cms_db;"
    
    # Run migrations
-   psql -U postgres -d your_database_name -f database/migrations/001_create_users_table.sql
+   podman exec -i postgres_16 psql -U postgres -d ai_cms_db < database/migrations/002_create_users_table_uuid.sql
    ```
 
 5. **Run development server**
@@ -149,13 +149,20 @@ Authorization: Bearer <your-jwt-token>
 
 Untuk menambahkan endpoint public baru, edit `src/libs/config/guestPathHttp.ts`
 
-## 📚 API Documentation
+## 📚 Documentation
 
+### API Documentation
 Setelah aplikasi berjalan, akses Swagger documentation di:
-
 ```
 http://localhost:8000/docs
 ```
+
+### Additional Documentation
+- **[API_ENDPOINTS.md](./API_ENDPOINTS.md)** - Complete API reference with examples
+- **[SETUP.md](./SETUP.md)** - Detailed setup instructions
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Production deployment guide
+- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Development guidelines
+- **[SECURITY.md](./SECURITY.md)** - Security best practices
 
 ## 🏗️ Cara Membuat Module Baru
 
@@ -213,10 +220,26 @@ APP_EXPOSE_DOCS=true
 
 # PostgreSQL
 DB_HOST_POSTGRES=localhost
-DB_NAME_POSTGRES=your_db
+DB_NAME_POSTGRES=ai_cms_db
 DB_USER_POSTGRES=postgres
-DB_PASS_POSTGRES=your_password
+DB_PASS_POSTGRES=postgres
 DB_PORT_POSTGRES=5432
+```
+
+### 📋 Setup Commands
+
+```bash
+# 1. Copy environment template
+cp env.example .env
+
+# 2. Create database
+podman exec -it postgres_16 psql -U postgres -c "CREATE DATABASE ai_cms_db;"
+
+# 3. Run migrations
+podman exec -i postgres_16 psql -U postgres -d ai_cms_db < database/migrations/002_create_users_table_uuid.sql
+
+# 4. Start development server
+pnpm dev
 ```
 
 ## 🗃️ Database

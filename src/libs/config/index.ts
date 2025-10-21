@@ -3,7 +3,7 @@ import packageJson from '../../../package.json';
 
 dotenv.config();
 
-export const APP_NAME = packageJson.name || 'rest-boilerplate';
+export const APP_NAME = packageJson.name || 'ai-cms-backend';
 export const APP_VERSION = packageJson.version || '0.0.0';
 
 export const NODE_ENV = process.env.NODE_ENV ?? 'development';

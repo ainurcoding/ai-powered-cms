@@ -1,18 +1,18 @@
 {
-	"name": "rest-boilerplate-ts",
+	"name": "ai-cms-backend",
 	"version": "1.0.0",
 	"main": "index.ts",
 	"scripts": {
 		"prepare": "husky || true",
-		"build": "rm -fr dist/* && npx tsc",
+		"build": "if exist dist rmdir /s /q dist && npx tsc",
 		"start": "node dist/index.js",
-		"start:docker": "docker build -t rest_boilerplate:latest . && docker compose up -d",
+		"start:docker": "docker build -t ai_cms_backend:latest . && docker compose up -d",
 		"stop:docker": "docker compose down",
 		"dev": "tsx watch ./src/index.ts",
 		"lint": "eslint --fix **/*.ts",
 		"test": "jest"
 	},
-	"keywords": ["typescript", "express", "rest-api", "boilerplate"],
+	"keywords": ["typescript", "express", "rest-api", "ai-cms-backend"],
 	"author": "",
 	"license": "MIT",
 	"dependencies": {

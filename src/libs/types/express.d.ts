@@ -1,11 +1,11 @@
 declare namespace Express {
 	export interface Request {
-		userId?: number
+		userId?: string // UUID
 		userData?: {
-			id_user: number;
+			id: string; // UUID
 			username: string;
-			nama: string;
-			level: string;
+			name: string;
+			role: string;
 		}
 		isGuest?: boolean;
 	}
