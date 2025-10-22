@@ -42,6 +42,24 @@ const guestPath: IGuestPathCfg[] = [
 		path: '/json-api-docs',
 		withSubPath: true,
 		method: []
+	},
+	{
+		// Public can view posts (GET only)
+		path: '/posts',
+		withSubPath: true,
+		method: ['get']
+	},
+	{
+		// Public can view categories
+		path: '/categories',
+		withSubPath: true,
+		method: ['get']
+	},
+	{
+		// Public can view tags
+		path: '/tags',
+		withSubPath: true,
+		method: ['get']
 	}
 ];
 

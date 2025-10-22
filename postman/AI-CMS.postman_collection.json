@@ -1,0 +1,688 @@
+{
+	"info": {
+		"_postman_id": "ai-cms-backend-collection",
+		"name": "AI-CMS Backend API",
+		"description": "Complete API collection for AI-CMS Backend with authentication, posts, categories, and tags management",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('token', response.result.token);",
+									"    console.log('Token saved:', response.result.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"admin\",\n  \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "login"]
+						},
+						"description": "Login with username and password. Default users:\n- admin / password123 (ADMIN)\n- johndoe / password123 (USER)\n- janeeditor / password123 (EDITOR)"
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/logout",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "logout"]
+						},
+						"description": "Logout and blacklist current token"
+					},
+					"response": []
+				},
+				{
+					"name": "Check Token",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/check-token",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "check-token"]
+						},
+						"description": "Check if current token is valid or blacklisted"
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints for login, logout, and token validation"
+		},
+		{
+			"name": "Posts",
+			"item": [
+				{
+					"name": "List Posts",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/posts?page=1&limit=10&status=published&sortBy=created_at&sortOrder=desc",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number"
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Items per page (max 100)"
+								},
+								{
+									"key": "status",
+									"value": "published",
+									"description": "Filter by status (draft, published, archived)",
+									"disabled": true
+								},
+								{
+									"key": "category",
+									"value": "",
+									"description": "Filter by category ID",
+									"disabled": true
+								},
+								{
+									"key": "tag",
+									"value": "",
+									"description": "Filter by tag ID",
+									"disabled": true
+								},
+								{
+									"key": "author",
+									"value": "",
+									"description": "Filter by author ID",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search in title, content, excerpt",
+									"disabled": true
+								},
+								{
+									"key": "sortBy",
+									"value": "created_at",
+									"description": "Sort field (created_at, updated_at, title, published_at)"
+								},
+								{
+									"key": "sortOrder",
+									"value": "desc",
+									"description": "Sort order (asc, desc)"
+								}
+							]
+						},
+						"description": "Get paginated list of posts with optional filters and search"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single Post",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/posts/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Post ID (UUID)"
+								}
+							]
+						},
+						"description": "Get detailed information about a specific post including author, category, and tags"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Post",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"My New Blog Post\",\n  \"content\": \"<p>This is the full HTML content of my blog post. It can contain rich text, images, and more.</p><p>This content must be at least 10 characters long.</p>\",\n  \"excerpt\": \"Short description of the post (optional, auto-generated if not provided)\",\n  \"status\": \"draft\",\n  \"featuredImage\": \"https://example.com/image.jpg\",\n  \"categoryId\": \"\",\n  \"tagIds\": [],\n  \"metaTitle\": \"My New Blog Post - SEO Title\",\n  \"metaDescription\": \"SEO-friendly description for search engines\",\n  \"metaKeywords\": \"blog, tutorial, guide\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/posts",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts"]
+						},
+						"description": "Create a new post. Requires authentication. Slug is auto-generated from title."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Post",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Updated Post Title\",\n  \"content\": \"<p>Updated content here...</p>\",\n  \"status\": \"published\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/posts/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Post ID (UUID)"
+								}
+							]
+						},
+						"description": "Update an existing post. All fields are optional. Requires authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Post",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/posts/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Post ID (UUID)"
+								}
+							]
+						},
+						"description": "Permanently delete a post. Requires authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Post Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"published\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/posts/:id/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts", ":id", "status"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Post ID (UUID)"
+								}
+							]
+						},
+						"description": "Quick update for post status only (draft, published, archived). Requires authentication."
+					},
+					"response": []
+				},
+				{
+					"name": "Search Posts",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/posts?search=typescript&page=1&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts"],
+							"query": [
+								{
+									"key": "search",
+									"value": "typescript",
+									"description": "Search keyword"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Search posts by keyword in title, content, and excerpt"
+					},
+					"response": []
+				},
+				{
+					"name": "Filter Posts by Status",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/posts?status=published&page=1&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["posts"],
+							"query": [
+								{
+									"key": "status",
+									"value": "published",
+									"description": "draft, published, or archived"
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Filter posts by status (draft, published, archived)"
+					},
+					"response": []
+				}
+			],
+			"description": "Posts management endpoints (CRUD operations)",
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "Categories",
+			"item": [
+				{
+					"name": "List Categories",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/categories?page=1&limit=50",
+							"host": ["{{baseUrl}}"],
+							"path": ["categories"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "includeCount",
+									"value": "true",
+									"description": "Include post count per category",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get list of all categories (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single Category",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/categories/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["categories", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Category ID (UUID)"
+								}
+							]
+						},
+						"description": "Get single category details (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"New Category\",\n  \"description\": \"Category description\",\n  \"parentId\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/categories",
+							"host": ["{{baseUrl}}"],
+							"path": ["categories"]
+						},
+						"description": "Create new category (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Category Name\",\n  \"description\": \"Updated description\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/categories/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["categories", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Category ID (UUID)"
+								}
+							]
+						},
+						"description": "Update category (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/categories/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["categories", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Category ID (UUID)"
+								}
+							]
+						},
+						"description": "Delete category (will be implemented next)"
+					},
+					"response": []
+				}
+			],
+			"description": "Categories management endpoints (Coming next!)"
+		},
+		{
+			"name": "Tags",
+			"item": [
+				{
+					"name": "List Tags",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tags?page=1&limit=50",
+							"host": ["{{baseUrl}}"],
+							"path": ["tags"],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "includeCount",
+									"value": "true",
+									"description": "Include post count per tag",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get list of all tags (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Tag Suggestions (Autocomplete)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tags/suggestions?q=java&limit=5",
+							"host": ["{{baseUrl}}"],
+							"path": ["tags", "suggestions"],
+							"query": [
+								{
+									"key": "q",
+									"value": "java",
+									"description": "Search query"
+								},
+								{
+									"key": "limit",
+									"value": "5",
+									"description": "Max suggestions"
+								}
+							]
+						},
+						"description": "Get tag suggestions for autocomplete (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Tag",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"New Tag\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tags",
+							"host": ["{{baseUrl}}"],
+							"path": ["tags"]
+						},
+						"description": "Create new tag (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Tag",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Tag Name\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/tags/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["tags", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Tag ID (UUID)"
+								}
+							]
+						},
+						"description": "Update tag (will be implemented next)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Tag",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/tags/:id",
+							"host": ["{{baseUrl}}"],
+							"path": ["tags", ":id"],
+							"variable": [
+								{
+									"key": "id",
+									"value": "",
+									"description": "Tag ID (UUID)"
+								}
+							]
+						},
+						"description": "Delete tag (will be implemented next)"
+					},
+					"response": []
+				}
+			],
+			"description": "Tags management endpoints (Coming next!)"
+		},
+		{
+			"name": "Health Check",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Check if API is running"
+					},
+					"response": []
+				}
+			],
+			"description": "System health check endpoint"
+		}
+	]
+}
+

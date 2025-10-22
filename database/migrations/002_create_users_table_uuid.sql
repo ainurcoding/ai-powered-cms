@@ -13,6 +13,8 @@ CREATE TABLE users (
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'USER',
     is_active BOOLEAN DEFAULT true,
+    avatar VARCHAR(500),
+    bio TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -44,37 +46,40 @@ CREATE TRIGGER update_users_updated_at
 -- Bcrypt hash: $2a$10$rC6Q8X9c3V3vK9Y8X0Z8XuE4k4h8x0Z8XuE4k4h8x0Z8XuE4k4h8xu
 
 -- Admin user
-INSERT INTO users (name, username, email, password, role) 
+INSERT INTO users (name, username, email, password, role, avatar) 
 VALUES (
     'Administrator',
     'admin',
     'admin@example.com',
     '$2a$10$rC6Q8X9c3V3vK9Y8X0Z8XuE4k4h8x0Z8XuE4k4h8x0Z8XuE4k4h8xu',
-    'ADMIN'
+    'ADMIN',
+    'https://ui-avatars.com/api/?name=Administrator&background=random&size=200'
 );
 
 -- Regular user
-INSERT INTO users (name, username, email, password, role) 
+INSERT INTO users (name, username, email, password, role, avatar) 
 VALUES (
     'John Doe',
     'johndoe',
     'john@example.com',
     '$2a$10$rC6Q8X9c3V3vK9Y8X0Z8XuE4k4h8x0Z8XuE4k4h8x0Z8XuE4k4h8xu',
-    'USER'
+    'USER',
+    'https://ui-avatars.com/api/?name=John+Doe&background=random&size=200'
 );
 
 -- Editor user
-INSERT INTO users (name, username, email, password, role) 
+INSERT INTO users (name, username, email, password, role, avatar) 
 VALUES (
     'Jane Editor',
     'janeeditor',
     'jane@example.com',
     '$2a$10$rC6Q8X9c3V3vK9Y8X0Z8XuE4k4h8x0Z8XuE4k4h8x0Z8XuE4k4h8xu',
-    'EDITOR'
+    'EDITOR',
+    'https://ui-avatars.com/api/?name=Jane+Editor&background=random&size=200'
 );
 
 -- Display created users
-SELECT id, name, username, email, role, is_active, created_at 
+SELECT id, name, username, email, role, avatar, is_active, created_at 
 FROM users 
 ORDER BY created_at;
 
