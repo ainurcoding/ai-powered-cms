@@ -793,6 +793,195 @@
 			"description": "Media upload and management endpoints"
 		},
 		{
+			"name": "AI Features",
+			"item": [
+				{
+					"name": "AI Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ai/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "status"]
+						},
+						"description": "Get AI service status and available features"
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Content",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Getting Started with React Hooks\",\n  \"topic\": \"React Development\",\n  \"keywords\": [\"react\", \"hooks\", \"javascript\", \"frontend\"],\n  \"contentType\": \"tutorial\",\n  \"tone\": \"friendly\",\n  \"length\": \"medium\",\n  \"language\": \"en\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/generate-content",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "generate-content"]
+						},
+						"description": "Generate content using AI. Supports blog, article, tutorial, news, review types."
+					},
+					"response": []
+				},
+				{
+					"name": "Optimize SEO",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"My Blog Post About AI\",\n  \"content\": \"Artificial intelligence is transforming the world. In this article, we will explore how AI is changing various industries and what the future holds for this technology.\",\n  \"targetKeywords\": [\"artificial intelligence\", \"AI technology\", \"machine learning\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/optimize-seo",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "optimize-seo"]
+						},
+						"description": "Optimize content for SEO with AI-generated titles, meta descriptions, and keyword suggestions"
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Image",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"prompt\": \"Modern office workspace with laptop, coffee, and plants\",\n  \"style\": \"photographic\",\n  \"size\": \"medium\",\n  \"aspectRatio\": \"16:9\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/generate-image",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "generate-image"]
+						},
+						"description": "Generate images using AI. Supports multiple styles: photographic, artistic, minimalist, vintage"
+					},
+					"response": []
+				},
+				{
+					"name": "Auto-tagging",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Building Scalable Web Applications with Node.js\",\n  \"content\": \"Node.js has become the go-to platform for building scalable web applications. In this comprehensive guide, we will explore best practices for creating high-performance applications using Node.js, Express.js, and modern JavaScript frameworks.\",\n  \"existingTags\": [\"nodejs\", \"javascript\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/auto-tagging",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "auto-tagging"]
+						},
+						"description": "Auto-generate relevant tags for content using AI analysis"
+					},
+					"response": []
+				},
+				{
+					"name": "Content Suggestions",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ai/content-suggestions?topic=AI&contentType=blog&language=en",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "content-suggestions"],
+							"query": [
+								{
+									"key": "topic",
+									"value": "AI",
+									"description": "Content topic"
+								},
+								{
+									"key": "contentType",
+									"value": "blog",
+									"description": "Content type (blog, article, tutorial, news, review)"
+								},
+								{
+									"key": "language",
+									"value": "en",
+									"description": "Language (id, en)"
+								}
+							]
+						},
+						"description": "Get AI-generated content suggestions for a topic"
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Indonesian Content",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"topic\": \"Panduan Memulai Bisnis Online\",\n  \"keywords\": [\"bisnis online\", \"e-commerce\", \"startup\", \"entrepreneur\"],\n  \"contentType\": \"article\",\n  \"tone\": \"professional\",\n  \"length\": \"long\",\n  \"language\": \"id\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/generate-content",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "generate-content"]
+						},
+						"description": "Generate Indonesian content using AI"
+					},
+					"response": []
+				},
+				{
+					"name": "Generate Artistic Image",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"prompt\": \"Abstract technology background with circuit patterns\",\n  \"style\": \"artistic\",\n  \"size\": \"large\",\n  \"aspectRatio\": \"1:1\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/ai/generate-image",
+							"host": ["{{baseUrl}}"],
+							"path": ["ai", "generate-image"]
+						},
+						"description": "Generate artistic style image using AI"
+					},
+					"response": []
+				}
+			],
+			"description": "AI-powered features for content generation, SEO optimization, image generation, and auto-tagging"
+		},
+		{
 			"name": "Health Check",
 			"item": [
 				{

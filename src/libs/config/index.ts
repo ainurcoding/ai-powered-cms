@@ -18,3 +18,6 @@ export const postgresConfig = {
 	PORT: process.env.DB_PORT_POSTGRES || 5432,
 	PASSWORD: process.env.DB_PASS_POSTGRES || ''
 };
+
+// Export AI configuration
+export * from './ai';
