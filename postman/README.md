@@ -80,19 +80,26 @@ Setelah login, semua protected endpoints akan otomatis menggunakan token dari en
 - ✅ GET /posts?search=keyword - Search posts (Public)
 - ✅ GET /posts?status=published - Filter by status (Public)
 
-### ⏳ Categories (Coming Next!)
-- ⏳ GET /categories - List categories
-- ⏳ GET /categories/:id - Get single category
-- ⏳ POST /categories - Create category
-- ⏳ PUT /categories/:id - Update category
-- ⏳ DELETE /categories/:id - Delete category
+### ✅ Categories (Ready to Test!)
+- ✅ GET /categories - List categories with hierarchy
+- ✅ GET /categories/:id - Get single category
+- ✅ POST /categories - Create category (ADMIN only)
+- ✅ PUT /categories/:id - Update category (ADMIN only)
+- ✅ DELETE /categories/:id - Delete category (ADMIN only)
 
-### ⏳ Tags (Coming Next!)
-- ⏳ GET /tags - List tags
-- ⏳ GET /tags/suggestions - Autocomplete
-- ⏳ POST /tags - Create tag
-- ⏳ PUT /tags/:id - Update tag
-- ⏳ DELETE /tags/:id - Delete tag
+### ✅ Tags (Ready to Test!)
+- ✅ GET /tags - List tags with search
+- ✅ GET /tags/suggestions - Autocomplete search
+- ✅ GET /tags/:id - Get single tag
+- ✅ POST /tags - Create tag (ADMIN/EDITOR)
+- ✅ PUT /tags/:id - Update tag (ADMIN/EDITOR)
+- ✅ DELETE /tags/:id - Delete tag (ADMIN only)
+
+### ✅ Media (Ready to Test!) ⭐
+- ✅ POST /media/upload - Upload to Cloudinary (multipart/form-data)
+- ✅ GET /media - List media library (Protected)
+- ✅ GET /media/:id - Get media details (Protected)
+- ✅ DELETE /media/:id - Delete from Cloudinary (Uploader/ADMIN)
 
 ### ✅ Health Check (Ready)
 - ✅ GET /health - System health check

@@ -18,6 +18,9 @@ npm-debug.log*
 pnpm-debug.log*
 storage/logs/*.log
 
+# Temporary uploads (before Cloudinary)
+storage/temp/
+
 # OS files
 .DS_Store
 Thumbs.db
