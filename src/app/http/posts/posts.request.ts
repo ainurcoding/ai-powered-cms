@@ -1,4 +1,4 @@
-import { InferOutput, object, string, optional, array, picklist, minLength, maxLength, pipe, number, transform } from 'valibot';
+import { InferOutput, object, string, optional, array, picklist, minLength, maxLength, pipe, transform } from 'valibot';
 import { ERROR_VALIDATION_MSG } from '@/libs/config/errorMessage';
 
 // Validation for creating a new post
