@@ -278,7 +278,7 @@ Focus on relevant, specific tags that improve content discoverability.
 	/**
 	 * Parse content generation response
 	 */
-	private parseContentResponse(text: string, request: IContentGenerationRequest): IContentGenerationResponse {
+	private parseContentResponse(text: string, _request: IContentGenerationRequest): IContentGenerationResponse {
 		try {
 			// Extract JSON from response
 			const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -356,7 +356,7 @@ Focus on relevant, specific tags that improve content discoverability.
 	/**
 	 * Parse auto-tagging response
 	 */
-	private parseTaggingResponse(text: string, request: IAutoTaggingRequest): IAutoTaggingResponse {
+	private parseTaggingResponse(text: string, _request: IAutoTaggingRequest): IAutoTaggingResponse {
 		try {
 			const jsonMatch = text.match(/\{[\s\S]*\}/);
 			if (!jsonMatch) {

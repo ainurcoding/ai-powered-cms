@@ -1,6 +1,5 @@
 import { TRequestFunction, InvalidParameterException } from '@/libs/core';
 import { aiService, IContentGenerationRequest, ISEOOptimizationRequest, IImageGenerationRequest, IAutoTaggingRequest } from '@/libs/services/aiService';
-import logger from '@/libs/core/logger';
 
 /**
  * Generate content using AI
@@ -82,7 +81,7 @@ const autoTagging: TRequestFunction = async (req) => {
 /**
  * Get AI service status
  */
-const getStatus: TRequestFunction = async (req) => {
+const getStatus: TRequestFunction = async (_req) => {
 	const status = {
 		service: 'AI Service',
 		status: 'active',
