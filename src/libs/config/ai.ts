@@ -1,17 +1,21 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import dotenv from 'dotenv';
+
+// Load environment variables first
+dotenv.config();
 
 // AI Configuration
 export const AI_CONFIG = {
 	// Google Gemini API
 	GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-	GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+	GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
 	
 	// Content Generation Settings
 	MAX_TOKENS: parseInt(process.env.AI_MAX_TOKENS || '2048'),
 	TEMPERATURE: parseFloat(process.env.AI_TEMPERATURE || '0.7'),
 	
 	// Image Generation Settings
-	IMAGE_MODEL: process.env.AI_IMAGE_MODEL || 'gemini-1.5-flash',
+	IMAGE_MODEL: process.env.AI_IMAGE_MODEL || 'gemini-2.5-flash',
 	IMAGE_QUALITY: process.env.AI_IMAGE_QUALITY || 'standard',
 	IMAGE_STYLE: process.env.AI_IMAGE_STYLE || 'photographic',
 	

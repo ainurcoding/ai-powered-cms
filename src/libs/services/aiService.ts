@@ -96,9 +96,13 @@ export class AIService {
 			const model = getTextModel();
 			
 			const prompt = this.buildContentPrompt(request);
+			logger.info('AI Prompt:', prompt);
+			
 			const result = await model.generateContent(prompt);
 			const response = await result.response;
 			const text = response.text();
+			
+			logger.info('AI Response:', text);
 			
 			return this.parseContentResponse(text, request);
 		} catch (error) {
@@ -278,29 +282,50 @@ Focus on relevant, specific tags that improve content discoverability.
 	/**
 	 * Parse content generation response
 	 */
-	private parseContentResponse(text: string, _request: IContentGenerationRequest): IContentGenerationResponse {
+	private parseContentResponse(text: string, request: IContentGenerationRequest): IContentGenerationResponse {
 		try {
-			// Extract JSON from response
+			// Try to extract JSON from response
 			const jsonMatch = text.match(/\{[\s\S]*\}/);
-			if (!jsonMatch) {
-				throw new Error('Invalid AI response format');
+			
+			if (jsonMatch) {
+				// If JSON found, parse it
+				const parsed = JSON.parse(jsonMatch[0]);
+				return {
+					title: parsed.title || request.title || request.topic || 'Generated Title',
+					content: parsed.content || text,
+					excerpt: parsed.excerpt || this.generateExcerpt(text),
+					metaDescription: parsed.metaDescription || this.generateMetaDescription(text),
+					suggestedTags: parsed.suggestedTags || this.extractTags(text),
+					suggestedCategory: parsed.suggestedCategory || 'General',
+					seoScore: parsed.seoScore || 75,
+					estimatedReadTime: parsed.estimatedReadTime || this.calculateReadTime(text)
+				};
+			} else {
+				// If no JSON found, create response from raw text
+				return {
+					title: request.title || request.topic || 'Generated Title',
+					content: text,
+					excerpt: this.generateExcerpt(text),
+					metaDescription: this.generateMetaDescription(text),
+					suggestedTags: this.extractTags(text),
+					suggestedCategory: 'General',
+					seoScore: 75,
+					estimatedReadTime: this.calculateReadTime(text)
+				};
 			}
-			
-			const parsed = JSON.parse(jsonMatch[0]);
-			
-			return {
-				title: parsed.title || 'Generated Title',
-				content: parsed.content || '',
-				excerpt: parsed.excerpt || '',
-				metaDescription: parsed.metaDescription || '',
-				suggestedTags: parsed.suggestedTags || [],
-				suggestedCategory: parsed.suggestedCategory || 'General',
-				seoScore: parsed.seoScore || 0,
-				estimatedReadTime: parsed.estimatedReadTime || 5
-			};
 		} catch (error) {
 			logger.error('Failed to parse content response:', error);
-			throw new Error('Invalid AI response format');
+			// Fallback to basic response
+			return {
+				title: request.title || request.topic || 'Generated Title',
+				content: text,
+				excerpt: this.generateExcerpt(text),
+				metaDescription: this.generateMetaDescription(text),
+				suggestedTags: this.extractTags(text),
+				suggestedCategory: 'General',
+				seoScore: 75,
+				estimatedReadTime: this.calculateReadTime(text)
+			};
 		}
 	}
 
@@ -374,6 +399,49 @@ Focus on relevant, specific tags that improve content discoverability.
 			logger.error('Failed to parse tagging response:', error);
 			throw new Error('Invalid AI response format');
 		}
+	}
+
+	/**
+	 * Generate excerpt from content
+	 */
+	private generateExcerpt(content: string): string {
+		// Remove markdown formatting and get first 150 characters
+		const cleanContent = content.replace(/[#*`_~]/g, '').trim();
+		return cleanContent.length > 150 ? cleanContent.substring(0, 150) + '...' : cleanContent;
+	}
+
+	/**
+	 * Generate meta description from content
+	 */
+	private generateMetaDescription(content: string): string {
+		// Remove markdown formatting and get first 160 characters
+		const cleanContent = content.replace(/[#*`_~]/g, '').trim();
+		return cleanContent.length > 160 ? cleanContent.substring(0, 160) + '...' : cleanContent;
+	}
+
+	/**
+	 * Extract tags from content
+	 */
+	private extractTags(content: string): string[] {
+		// Simple keyword extraction (can be improved with NLP)
+		const words = content.toLowerCase()
+			.replace(/[^\w\s]/g, ' ')
+			.split(/\s+/)
+			.filter(word => word.length > 3)
+			.filter(word => !['yang', 'dari', 'dengan', 'untuk', 'dalam', 'adalah', 'akan', 'telah', 'sudah'].includes(word));
+		
+		// Get unique words and return top 5
+		const uniqueWords = [...new Set(words)];
+		return uniqueWords.slice(0, 5);
+	}
+
+	/**
+	 * Calculate estimated read time
+	 */
+	private calculateReadTime(content: string): number {
+		const wordsPerMinute = 200;
+		const wordCount = content.split(/\s+/).length;
+		return Math.ceil(wordCount / wordsPerMinute);
 	}
 }
 
