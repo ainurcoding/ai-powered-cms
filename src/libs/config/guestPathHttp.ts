@@ -60,6 +60,12 @@ const guestPath: IGuestPathCfg[] = [
 		path: '/tags',
 		withSubPath: true,
 		method: ['get']
+	},
+	{
+		// Public can access static files (images, etc)
+		path: '/static',
+		withSubPath: true,
+		method: ['get']
 	}
 ];
 

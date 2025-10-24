@@ -2,6 +2,7 @@ import { logger } from '@/libs/core';
 import { ExpressServer } from '@/libs/core/ExpressServer';
 import { APP_EXPOSE_DOCS, APP_NAME, APP_PORT_HTTP, APP_VERSION } from '@/libs/config';
 import expressJSDocSwagger from 'express-jsdoc-swagger';
+import express from 'express';
 import path from 'path';
 import authorizeMiddleware from '@/libs/middlewares/authorization.middleware';
 import { initSocketIO } from '../ws';
@@ -23,6 +24,13 @@ async function httpServer() {
 		initSocketIO(server.httpServer);
 
 		expressJSDocSwagger(server.app)(swaggerOptions);
+
+		// Static files untuk temporary AI images (bypass auth)
+		server.app.use('/static/temp/ai-images', express.static(path.join(process.cwd(), 'storage/temp/ai-images')));
+
+		// Cleanup old temporary AI images on startup
+		const { aiService } = await import('@/libs/services/aiService');
+		await aiService.cleanupOldTempFiles();
 
 		// semua endpoint secara default perlu login,
 		// jika ingin bypass pengecekan token tambahkan path ke file ./libs/config/guestPathHttp.ts

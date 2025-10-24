@@ -27,7 +27,7 @@ export const createSEOOptimizationValidation = v.object({
  */
 export const createImageGenerationValidation = v.object({
 	prompt: v.string('Prompt is required'),
-	style: v.optional(v.picklist(['photographic', 'artistic', 'minimalist', 'vintage'], 'Invalid style')),
+	style: v.optional(v.picklist(['photographic', 'artistic', 'minimalist', 'vintage', 'cartoon', 'sketch'], 'Invalid style')),
 	size: v.optional(v.picklist(['small', 'medium', 'large'], 'Invalid size')),
 	aspectRatio: v.optional(v.picklist(['1:1', '16:9', '4:3', '3:2'], 'Invalid aspect ratio'))
 });

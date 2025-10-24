@@ -228,7 +228,7 @@ router.post('/ai/optimize-seo', authorizeMiddleware, requestValidator({ requestT
  *                 description: Image generation prompt
  *               style:
  *                 type: string
- *                 enum: [photographic, artistic, minimalist, vintage]
+ *                 enum: [photographic, artistic, minimalist, vintage, cartoon, sketch]
  *                 default: photographic
  *               size:
  *                 type: string
