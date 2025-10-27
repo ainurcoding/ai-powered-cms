@@ -236,11 +236,13 @@ export class AIService {
 				return result;
 			} catch (openaiError: any) {
 				logger.warn('OpenAI DALL-E API failed:', openaiError.message);
-				// Check if it's a credit limit error
+				// Check if it's a billing/credit limit error
 				if (openaiError.message?.includes('credit') || 
 					openaiError.message?.includes('limit') || 
-					openaiError.message?.includes('402')) {
-					logger.warn('OpenAI credit limit reached, using placeholder...');
+					openaiError.message?.includes('billing') ||
+					openaiError.message?.includes('402') ||
+					openaiError.message?.includes('billing_hard_limit_reached')) {
+					logger.warn('OpenAI billing/credit limit reached, using placeholder...');
 				}
 			}
 		}
@@ -1209,6 +1211,17 @@ Focus on relevant, specific tags that improve content discoverability.
 					size: this.getDALLESize(size, aspectRatio)
 				}
 			});
+			
+			// Parse error response to check for billing issues
+			try {
+				const errorData = JSON.parse(errorText);
+				if (errorData.error?.code === 'billing_hard_limit_reached') {
+					throw new Error(`OpenAI billing limit reached: ${errorData.error.message}`);
+				}
+			} catch (parseError) {
+				// If parsing fails, use original error
+			}
+			
 			throw new Error(`OpenAI DALL-E API error: ${response.status} ${response.statusText} - ${errorText}`);
 		}
 		
