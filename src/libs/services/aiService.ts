@@ -567,7 +567,6 @@ export class AIService {
 			'dapat': 'can',
 			'mampu': 'able to',
 			'harus': 'must',
-			'perlu': 'need to',
 			'ingin': 'want to',
 			'mau': 'want to',
 			'suka': 'like',
@@ -584,7 +583,6 @@ export class AIService {
 			'efisien': 'efficient',
 			'berhasil': 'successful',
 			'gagal': 'failed',
-			'berhasil': 'successful',
 			'kegagalan': 'failure',
 			'kesuksesan': 'success',
 			'pengalaman': 'experience',
@@ -644,9 +642,7 @@ export class AIService {
 			'cara mengkonfigurasi': 'how to configure',
 			'cara menginstal': 'how to install',
 			'cara mengupgrade': 'how to upgrade',
-			'cara mengupdate': 'how to update',
-			'cara mengupgrade': 'how to upgrade',
-			'cara mengupgrade': 'how to upgrade'
+			'cara mengupdate': 'how to update'
 		};
 		
 		// Try phrase translations first
@@ -689,7 +685,7 @@ export class AIService {
 	}
 
 	/**
-	 * Build content generation prompt
+	 * Build content generation prompt with enhanced AI instructions
 	 */
 	private buildContentPrompt(request: IContentGenerationRequest): string {
 		const { title, topic, keywords, contentType, tone, length, language } = request;
@@ -699,7 +695,7 @@ export class AIService {
 		
 		// Enhanced prompt for better translation handling
 		const translationInstruction = language === 'en' ? 
-			'IMPORTANT: Write the article in English. The topic and keywords have been pre-translated for better understanding.' : 
+			'IMPORTANT: Write the article in English. The topic and keywords have been pre-translated for better understanding. Focus on creating engaging, informative content that provides real value to readers.' : 
 			`Write the article in ${lang}.`;
 		
 		return `
@@ -1193,15 +1189,27 @@ Focus on relevant, specific tags that improve content discoverability.
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
+				model: 'dall-e-3',
 				prompt: enhancedPrompt,
 				n: 1,
-				size: this.getDALLESize(size, aspectRatio),
-				quality: 'standard'
+				size: this.getDALLESize(size, aspectRatio)
 			})
 		});
 		
 		if (!response.ok) {
-			throw new Error(`OpenAI DALL-E API error: ${response.status} ${response.statusText}`);
+			const errorText = await response.text();
+			logger.error('DALL-E API error details:', {
+				status: response.status,
+				statusText: response.statusText,
+				errorBody: errorText,
+				requestBody: {
+					model: 'dall-e-3',
+					prompt: enhancedPrompt,
+					n: 1,
+					size: this.getDALLESize(size, aspectRatio)
+				}
+			});
+			throw new Error(`OpenAI DALL-E API error: ${response.status} ${response.statusText} - ${errorText}`);
 		}
 		
 		const result = await response.json();
@@ -1224,19 +1232,13 @@ Focus on relevant, specific tags that improve content discoverability.
 	 * Get DALL-E size format
 	 */
 	private getDALLESize(size: string, aspectRatio: string): string {
-		const sizeMap: Record<string, string> = {
-			'small': '256x256',
-			'medium': '512x512',
-			'large': '1024x1024'
-		};
+		// DALL-E 3 only supports specific sizes
+		if (aspectRatio === '1:1') return '1024x1024';
+		if (aspectRatio === '16:9') return '1792x1024';
+		if (aspectRatio === '9:16') return '1024x1792';
 		
-		// DALL-E supports specific sizes
-		if (aspectRatio === '1:1') return sizeMap[size] || '512x512';
-		if (aspectRatio === '16:9') return '1024x1792';
-		if (aspectRatio === '4:3') return '1024x1024';
-		if (aspectRatio === '3:2') return '1024x1024';
-		
-		return '512x512';
+		// Default to square for other aspect ratios
+		return '1024x1024';
 	}
 	
 	/**
