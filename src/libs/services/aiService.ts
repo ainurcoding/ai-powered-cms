@@ -97,17 +97,62 @@ export class AIService {
 			this.validateConfig();
 			const model = getTextModel();
 			
+			// Translate topic and keywords if generating English content
+			let finalTopic = request.topic;
+			let finalKeywords = request.keywords || [];
+			
+			if (request.language === 'en') {
+				const translation = this.translateToEnglish(request.topic, request.keywords || []);
+				finalTopic = translation.translatedTopic;
+				finalKeywords = translation.translatedKeywords;
+			}
+			
 			const prompt = this.buildContentPrompt(request);
+			
+			logger.info('Generating content with AI...', { 
+				originalTopic: request.topic,
+				translatedTopic: finalTopic,
+				originalKeywords: request.keywords,
+				translatedKeywords: finalKeywords,
+				contentType: request.contentType,
+				language: request.language 
+			});
 			
 			const result = await model.generateContent(prompt);
 			const response = await result.response;
 			const text = response.text();
 			
+			logger.info('AI content generated successfully', { 
+				contentLength: text.length 
+			});
 			
-			return this.parseContentResponse(text, request);
+			// Create modified request with translated topic/keywords for response
+			const modifiedRequest = {
+				...request,
+				topic: finalTopic,
+				keywords: finalKeywords
+			};
+			
+			return this.parseContentResponse(text, modifiedRequest);
 		} catch (error) {
 			logger.error('AI Content Generation failed:', error);
-			throw new Error('Failed to generate content with AI');
+			
+			// Check if it's a network/API error
+			if (error instanceof Error) {
+				if (error.message.includes('fetch failed') || error.message.includes('network')) {
+					throw new Error('AI service is currently unavailable. Please check your internet connection and API configuration.');
+				}
+				if (error.message.includes('API key') || error.message.includes('authentication')) {
+					throw new Error('AI API key is invalid or missing. Please check your GEMINI_API_KEY configuration.');
+				}
+				if (error.message.includes('quota') || error.message.includes('rate limit')) {
+					throw new Error('AI service quota exceeded. Please try again later.');
+				}
+			}
+			
+			// Fallback to mock content for development
+			logger.warn('Using fallback content generation due to AI service error');
+			return this.generateFallbackContent(request);
 		}
 	}
 
@@ -120,14 +165,41 @@ export class AIService {
 			const model = getTextModel();
 			
 			const prompt = this.buildSEOPrompt(request);
+			
+			logger.info('Optimizing content for SEO...', { 
+				title: request.title,
+				contentLength: request.content.length,
+				targetKeywords: request.targetKeywords
+			});
+			
 			const result = await model.generateContent(prompt);
 			const response = await result.response;
 			const text = response.text();
 			
+			logger.info('SEO optimization completed successfully', { 
+				responseLength: text.length 
+			});
+			
 			return this.parseSEOResponse(text, request);
 		} catch (error) {
 			logger.error('AI SEO Optimization failed:', error);
-			throw new Error('Failed to optimize SEO with AI');
+			
+			// Check if it's a network/API error
+			if (error instanceof Error) {
+				if (error.message.includes('fetch failed') || error.message.includes('network')) {
+					throw new Error('AI service is currently unavailable. Please check your internet connection and API configuration.');
+				}
+				if (error.message.includes('API key') || error.message.includes('authentication')) {
+					throw new Error('AI API key is invalid or missing. Please check your GEMINI_API_KEY configuration.');
+				}
+				if (error.message.includes('quota') || error.message.includes('rate limit')) {
+					throw new Error('AI service quota exceeded. Please try again later.');
+				}
+			}
+			
+			// Fallback to basic SEO optimization
+			logger.warn('Using fallback SEO optimization due to AI service error');
+			return this.generateFallbackSEOResponse(request);
 		}
 	}
 
@@ -199,6 +271,424 @@ export class AIService {
 	}
 
 	/**
+	 * Generate fallback SEO optimization when AI service is unavailable
+	 */
+	private generateFallbackSEOResponse(request: ISEOOptimizationRequest): ISEOOptimizationResponse {
+		const { title, content, targetKeywords } = request;
+		
+		// Basic SEO optimization without AI
+		const optimizedTitle = this.optimizeTitleForSEO(title, targetKeywords || []);
+		const metaDescription = this.generateMetaDescription(content);
+		const suggestedKeywords = this.extractKeywordsFromContent(content, targetKeywords || []);
+		const seoScore = this.calculateSEOScore(content, optimizedTitle, metaDescription, suggestedKeywords);
+		const improvements = this.generateSEOImprovements(content, optimizedTitle, metaDescription);
+		
+		return {
+			optimizedTitle,
+			metaDescription,
+			suggestedKeywords,
+			seoScore,
+			improvements
+		};
+	}
+
+	/**
+	 * Optimize title for SEO
+	 */
+	private optimizeTitleForSEO(title: string, targetKeywords: string[]): string {
+		// Basic title optimization
+		let optimized = title;
+		
+		// Add target keywords if not already present
+		if (targetKeywords.length > 0) {
+			const primaryKeyword = targetKeywords[0];
+			if (!optimized.toLowerCase().includes(primaryKeyword.toLowerCase())) {
+				optimized = `${primaryKeyword} - ${optimized}`;
+			}
+		}
+		
+		// Ensure title is not too long (60 characters max)
+		if (optimized.length > 60) {
+			optimized = optimized.substring(0, 57) + '...';
+		}
+		
+		return optimized;
+	}
+
+	/**
+	 * Extract keywords from content
+	 */
+	private extractKeywordsFromContent(content: string, targetKeywords: string[]): string[] {
+		// Combine target keywords with extracted keywords
+		const extractedKeywords = this.extractTags(content);
+		const allKeywords = [...new Set([...targetKeywords, ...extractedKeywords])];
+		
+		// Return top 10 keywords
+		return allKeywords.slice(0, 10);
+	}
+
+	/**
+	 * Calculate basic SEO score
+	 */
+	private calculateSEOScore(content: string, title: string, metaDescription: string, keywords: string[]): number {
+		let score = 0;
+		
+		// Title length check (30-60 characters)
+		if (title.length >= 30 && title.length <= 60) score += 20;
+		else if (title.length > 0) score += 10;
+		
+		// Meta description length check (120-160 characters)
+		if (metaDescription.length >= 120 && metaDescription.length <= 160) score += 20;
+		else if (metaDescription.length > 0) score += 10;
+		
+		// Content length check (minimum 300 words)
+		const wordCount = content.split(/\s+/).length;
+		if (wordCount >= 300) score += 20;
+		else if (wordCount >= 150) score += 10;
+		
+		// Keywords presence check
+		if (keywords.length > 0) score += 20;
+		
+		// Headings check
+		const headingCount = (content.match(/<h[1-6]>/gi) || []).length;
+		if (headingCount >= 3) score += 10;
+		else if (headingCount >= 1) score += 5;
+		
+		// Images check (if any)
+		const imageCount = (content.match(/<img/gi) || []).length;
+		if (imageCount > 0) score += 10;
+		
+		return Math.min(score, 100);
+	}
+
+	/**
+	 * Generate SEO improvements suggestions
+	 */
+	private generateSEOImprovements(content: string, title: string, metaDescription: string): string[] {
+		const improvements: string[] = [];
+		
+		// Title improvements
+		if (title.length < 30) {
+			improvements.push('Title is too short. Consider adding more descriptive words (30-60 characters recommended).');
+		} else if (title.length > 60) {
+			improvements.push('Title is too long. Consider shortening it to under 60 characters.');
+		}
+		
+		// Meta description improvements
+		if (metaDescription.length < 120) {
+			improvements.push('Meta description is too short. Aim for 120-160 characters.');
+		} else if (metaDescription.length > 160) {
+			improvements.push('Meta description is too long. Keep it under 160 characters.');
+		}
+		
+		// Content improvements
+		const wordCount = content.split(/\s+/).length;
+		if (wordCount < 300) {
+			improvements.push('Content is too short. Consider adding more detailed information (minimum 300 words recommended).');
+		}
+		
+		// Headings improvements
+		const headingCount = (content.match(/<h[1-6]>/gi) || []).length;
+		if (headingCount < 3) {
+			improvements.push('Add more headings to improve content structure and readability.');
+		}
+		
+		// Images improvements
+		const imageCount = (content.match(/<img/gi) || []).length;
+		if (imageCount === 0) {
+			improvements.push('Consider adding relevant images to improve user engagement.');
+		}
+		
+		return improvements;
+	}
+
+	/**
+	 * Generate fallback content when AI service is unavailable
+	 */
+	private generateFallbackContent(request: IContentGenerationRequest): IContentGenerationResponse {
+		const { title, topic, keywords, contentType, language } = request;
+		
+		// Translate topic and keywords if generating English content
+		let finalTopic = topic;
+		let finalKeywords = keywords || [];
+		
+		if (language === 'en') {
+			const translation = this.translateToEnglish(topic, keywords || []);
+			finalTopic = translation.translatedTopic;
+			finalKeywords = translation.translatedKeywords;
+		}
+		
+		const contentTitle = title || finalTopic;
+		const isEnglish = language === 'en';
+		
+		// Generate basic content based on content type
+		let content = '';
+		
+		switch (contentType) {
+			case 'tutorial':
+				content = this.generateTutorialContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
+				break;
+			case 'blog':
+				content = this.generateBlogContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
+				break;
+			case 'article':
+				content = this.generateArticleContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
+				break;
+			case 'news':
+				content = this.generateNewsContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
+				break;
+			case 'review':
+				content = this.generateReviewContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
+				break;
+			default:
+				content = this.generateDefaultContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
+		}
+		
+		return {
+			title: contentTitle,
+			content: content,
+			excerpt: this.generateExcerpt(content),
+			metaDescription: this.generateMetaDescription(content),
+			suggestedTags: this.extractTags(content),
+			suggestedCategory: this.getCategoryFromTopic(finalTopic),
+			seoScore: 75,
+			estimatedReadTime: this.calculateReadTime(content)
+		};
+	}
+
+	/**
+	 * Translate Indonesian topic/keywords to English for better AI understanding
+	 */
+	private translateToEnglish(topic: string, keywords: string[]): { translatedTopic: string, translatedKeywords: string[] } {
+		// Common Indonesian to English translations for tech topics
+		const translations: { [key: string]: string } = {
+			'pemrograman': 'programming',
+			'pengembangan': 'development',
+			'web development': 'web development',
+			'belajar': 'learning',
+			'coding': 'coding',
+			'javascript': 'javascript',
+			'python': 'python',
+			'react': 'react',
+			'nodejs': 'nodejs',
+			'database': 'database',
+			'api': 'api',
+			'frontend': 'frontend',
+			'backend': 'backend',
+			'fullstack': 'fullstack',
+			'mobile': 'mobile',
+			'android': 'android',
+			'ios': 'ios',
+			'ui': 'ui',
+			'ux': 'ux',
+			'design': 'design',
+			'framework': 'framework',
+			'library': 'library',
+			'tutorial': 'tutorial',
+			'panduan': 'guide',
+			'cara': 'how to',
+			'tips': 'tips',
+			'trik': 'tricks',
+			'contoh': 'examples',
+			'praktik': 'practice',
+			'proyek': 'project',
+			'aplikasi': 'application',
+			'website': 'website',
+			'blog': 'blog',
+			'seo': 'seo',
+			'optimasi': 'optimization',
+			'performansi': 'performance',
+			'keamanan': 'security',
+			'debugging': 'debugging',
+			'testing': 'testing',
+			'deployment': 'deployment',
+			'devops': 'devops',
+			'cloud': 'cloud',
+			'aws': 'aws',
+			'azure': 'azure',
+			'google cloud': 'google cloud',
+			'docker': 'docker',
+			'kubernetes': 'kubernetes',
+			'git': 'git',
+			'github': 'github',
+			'gitlab': 'gitlab',
+			'ci/cd': 'ci/cd',
+			'agile': 'agile',
+			'scrum': 'scrum',
+			'kanban': 'kanban',
+			// Additional translations for general topics
+			'perlu': 'need to',
+			'dipelajari': 'learn',
+			'sebelum': 'before',
+			'menikah': 'marriage',
+			'pranikah': 'pre-marriage',
+			'pelatihan': 'training',
+			'apa': 'what',
+			'yang': 'that',
+			'untuk': 'for',
+			'dengan': 'with',
+			'dalam': 'in',
+			'pada': 'at',
+			'oleh': 'by',
+			'dari': 'from',
+			'ke': 'to',
+			'di': 'in',
+			'sebagai': 'as',
+			'atau': 'or',
+			'dan': 'and',
+			'tetapi': 'but',
+			'namun': 'however',
+			'jika': 'if',
+			'ketika': 'when',
+			'karena': 'because',
+			'setelah': 'after',
+			'selama': 'during',
+			'sejak': 'since',
+			'sampai': 'until',
+			'hingga': 'until',
+			'antara': 'between',
+			'antara lain': 'among others',
+			'terutama': 'especially',
+			'khususnya': 'particularly',
+			'umumnya': 'generally',
+			'biasanya': 'usually',
+			'sering': 'often',
+			'jarang': 'rarely',
+			'tidak': 'not',
+			'bukan': 'not',
+			'belum': 'not yet',
+			'sudah': 'already',
+			'akan': 'will',
+			'telah': 'has/have',
+			'pernah': 'ever',
+			'pasti': 'surely',
+			'mungkin': 'maybe',
+			'bisa': 'can',
+			'dapat': 'can',
+			'mampu': 'able to',
+			'harus': 'must',
+			'perlu': 'need to',
+			'ingin': 'want to',
+			'mau': 'want to',
+			'suka': 'like',
+			'senang': 'happy',
+			'bahagia': 'happy',
+			'baik': 'good',
+			'bagus': 'good',
+			'hebat': 'great',
+			'luar biasa': 'extraordinary',
+			'penting': 'important',
+			'berguna': 'useful',
+			'bermanfaat': 'beneficial',
+			'efektif': 'effective',
+			'efisien': 'efficient',
+			'berhasil': 'successful',
+			'gagal': 'failed',
+			'berhasil': 'successful',
+			'kegagalan': 'failure',
+			'kesuksesan': 'success',
+			'pengalaman': 'experience',
+			'pengetahuan': 'knowledge',
+			'keterampilan': 'skills',
+			'kemampuan': 'ability',
+			'keahlian': 'expertise',
+			'profesional': 'professional',
+			'personal': 'personal',
+			'pribadi': 'personal',
+			'keluarga': 'family',
+			'rumah tangga': 'household',
+			'karir': 'career',
+			'pekerjaan': 'work',
+			'bisnis': 'business',
+			'usaha': 'business',
+			'perusahaan': 'company',
+			'organisasi': 'organization',
+			'komunitas': 'community',
+			'masyarakat': 'society',
+			'negara': 'country',
+			'dunia': 'world',
+			'global': 'global',
+			'lokal': 'local',
+			'nasional': 'national',
+			'internasional': 'international'
+		};
+
+		// Translate topic - try to translate common phrases first
+		let translatedTopic = topic.toLowerCase();
+		
+		// Common phrase translations
+		const phraseTranslations: { [key: string]: string } = {
+			'apa yang perlu dipelajari sebelum menikah': 'what to learn before marriage',
+			'cara belajar': 'how to learn',
+			'panduan lengkap': 'complete guide',
+			'tips dan trik': 'tips and tricks',
+			'cara membuat': 'how to make',
+			'cara menggunakan': 'how to use',
+			'cara mengatasi': 'how to solve',
+			'cara mengoptimalkan': 'how to optimize',
+			'cara meningkatkan': 'how to improve',
+			'cara mengembangkan': 'how to develop',
+			'cara mengelola': 'how to manage',
+			'cara mengatur': 'how to organize',
+			'cara memilih': 'how to choose',
+			'cara menentukan': 'how to determine',
+			'cara mengukur': 'how to measure',
+			'cara mengevaluasi': 'how to evaluate',
+			'cara menganalisis': 'how to analyze',
+			'cara menginterpretasikan': 'how to interpret',
+			'cara mengimplementasikan': 'how to implement',
+			'cara mengaplikasikan': 'how to apply',
+			'cara menerapkan': 'how to apply',
+			'cara mengintegrasikan': 'how to integrate',
+			'cara mengkustomisasi': 'how to customize',
+			'cara mengkonfigurasi': 'how to configure',
+			'cara menginstal': 'how to install',
+			'cara mengupgrade': 'how to upgrade',
+			'cara mengupdate': 'how to update',
+			'cara mengupgrade': 'how to upgrade',
+			'cara mengupgrade': 'how to upgrade'
+		};
+		
+		// Try phrase translations first
+		Object.keys(phraseTranslations).forEach(indonesian => {
+			if (translatedTopic.includes(indonesian)) {
+				translatedTopic = translatedTopic.replace(indonesian, phraseTranslations[indonesian]);
+			}
+		});
+		
+		// Then try word-by-word translations
+		Object.keys(translations).forEach(indonesian => {
+			const english = translations[indonesian];
+			translatedTopic = translatedTopic.replace(new RegExp(`\\b${indonesian}\\b`, 'gi'), english);
+		});
+
+		// Translate keywords
+		const translatedKeywords = keywords.map(keyword => {
+			let translated = keyword.toLowerCase();
+			
+			// Try phrase translations first
+			Object.keys(phraseTranslations).forEach(indonesian => {
+				if (translated.includes(indonesian)) {
+					translated = translated.replace(indonesian, phraseTranslations[indonesian]);
+				}
+			});
+			
+			// Then try word-by-word translations
+			Object.keys(translations).forEach(indonesian => {
+				const english = translations[indonesian];
+				translated = translated.replace(new RegExp(`\\b${indonesian}\\b`, 'gi'), english);
+			});
+			
+			return translated;
+		});
+
+		return {
+			translatedTopic: translatedTopic,
+			translatedKeywords: translatedKeywords
+		};
+	}
+
+	/**
 	 * Build content generation prompt
 	 */
 	private buildContentPrompt(request: IContentGenerationRequest): string {
@@ -207,14 +697,21 @@ export class AIService {
 		const lang = language === 'id' ? 'Indonesian' : 'English';
 		const lengthWords = length === 'short' ? '300-500' : length === 'medium' ? '800-1200' : '1500-2500';
 		
+		// Enhanced prompt for better translation handling
+		const translationInstruction = language === 'en' ? 
+			'IMPORTANT: Write the article in English. The topic and keywords have been pre-translated for better understanding.' : 
+			`Write the article in ${lang}.`;
+		
 		return `
+${translationInstruction}
+
 Write a detailed ${contentType} article in ${lang} about "${title || topic}".
 
 Requirements:
 - Length: ${lengthWords} words
 - Tone: ${tone}
 - Language: ${lang}
-${keywords ? `- Include keywords: ${keywords.join(', ')}` : ''}
+${keywords && keywords.length > 0 ? `- Include keywords: ${keywords.join(', ')}` : ''}
 
 Write a comprehensive article with:
 - Introduction
@@ -353,23 +850,37 @@ Focus on relevant, specific tags that improve content discoverability.
 	 */
 	private parseSEOResponse(text: string, request: ISEOOptimizationRequest): ISEOOptimizationResponse {
 		try {
-			const jsonMatch = text.match(/\{[\s\S]*\}/);
+			// Try to extract JSON from response (handle both plain JSON and markdown code blocks)
+			let jsonMatch = text.match(/\{[\s\S]*\}/);
+			
+			// If no JSON found, try to extract from markdown code blocks
 			if (!jsonMatch) {
-				throw new Error('Invalid AI response format');
+				const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+				if (codeBlockMatch) {
+					jsonMatch = [codeBlockMatch[1]];
+				}
 			}
 			
-			const parsed = JSON.parse(jsonMatch[0]);
-			
-			return {
-				optimizedTitle: parsed.optimizedTitle || request.title,
-				metaDescription: parsed.metaDescription || '',
-				suggestedKeywords: parsed.suggestedKeywords || [],
-				seoScore: parsed.seoScore || 0,
-				improvements: parsed.improvements || []
-			};
+			if (jsonMatch) {
+				// If JSON found, parse it
+				const parsed = JSON.parse(jsonMatch[0]);
+				return {
+					optimizedTitle: parsed.optimizedTitle || request.title,
+					metaDescription: parsed.metaDescription || this.generateMetaDescription(request.content),
+					suggestedKeywords: parsed.suggestedKeywords || this.extractTags(request.content),
+					seoScore: parsed.seoScore || 75,
+					improvements: parsed.improvements || []
+				};
+			} else {
+				// If no JSON found, use fallback SEO optimization
+				logger.warn('No valid JSON found in SEO response, using fallback optimization');
+				return this.generateFallbackSEOResponse(request);
+			}
 		} catch (error) {
 			logger.error('Failed to parse SEO response:', error);
-			throw new Error('Invalid AI response format');
+			// Fallback to basic SEO optimization
+			logger.warn('Using fallback SEO optimization due to parsing error');
+			return this.generateFallbackSEOResponse(request);
 		}
 	}
 

@@ -66,6 +66,16 @@ const guestPath: IGuestPathCfg[] = [
 		path: '/static',
 		withSubPath: true,
 		method: ['get']
+	},
+	{
+		// Test AI endpoint for debugging (no auth required)
+		path: '/ai/test-generate-content',
+		method: ['post']
+	},
+	{
+		// Test SEO optimization endpoint for debugging (no auth required)
+		path: '/ai/test-optimize-seo',
+		method: ['post']
 	}
 ];
 

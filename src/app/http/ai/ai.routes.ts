@@ -57,6 +57,82 @@ router.get('/ai/status', authorizeMiddleware, requestHandler(aiController.getSta
 
 /**
  * @swagger
+ * /ai/test-generate-content:
+ *   post:
+ *     summary: Test content generation without authentication (for debugging)
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               topic:
+ *                 type: string
+ *               keywords:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               contentType:
+ *                 type: string
+ *                 enum: [blog, article, tutorial, news, review]
+ *               tone:
+ *                 type: string
+ *                 enum: [professional, casual, friendly, technical, creative]
+ *               length:
+ *                 type: string
+ *                 enum: [short, medium, long]
+ *               language:
+ *                 type: string
+ *                 enum: [id, en]
+ *     responses:
+ *       200:
+ *         description: Content generated successfully
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/ai/test-generate-content', requestValidator({ requestType: 'body', type: request.createContentGenerationValidation }), requestHandler(aiController.generateContent));
+
+/**
+ * @swagger
+ * /ai/test-optimize-seo:
+ *   post:
+ *     summary: Test SEO optimization without authentication (for debugging)
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - content
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Content title
+ *               content:
+ *                 type: string
+ *                 description: Content body
+ *               targetKeywords:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Target keywords for SEO
+ *     responses:
+ *       200:
+ *         description: SEO optimization completed successfully
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/ai/test-optimize-seo', requestValidator({ requestType: 'body', type: request.createSEOOptimizationValidation }), requestHandler(aiController.optimizeSEO));
+
+/**
+ * @swagger
  * /ai/generate-content:
  *   post:
  *     summary: Generate content using AI

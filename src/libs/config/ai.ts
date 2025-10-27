@@ -51,9 +51,15 @@ export const getImageModel = () => {
 
 // Validate AI configuration
 export const validateAIConfig = (): boolean => {
-	if (!AI_CONFIG.GEMINI_API_KEY) {
-		throw new Error('GEMINI_API_KEY is required for AI features');
+	if (!AI_CONFIG.GEMINI_API_KEY || AI_CONFIG.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+		throw new Error('GEMINI_API_KEY is required for AI features. Please set a valid API key in your .env file.');
 	}
+	
+	// Check if API key looks valid (basic format check)
+	if (AI_CONFIG.GEMINI_API_KEY.length < 20) {
+		throw new Error('GEMINI_API_KEY appears to be invalid. Please check your API key format.');
+	}
+	
 	return true;
 };
 
