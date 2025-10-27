@@ -92,8 +92,8 @@ const getStatus: TRequestFunction = async (_req) => {
 			'Auto-tagging'
 		],
 		models: {
-			text: 'gemini-1.5-flash',
-			image: 'gemini-1.5-flash'
+			text: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+			image: process.env.AI_IMAGE_MODEL || 'gemini-2.5-flash'
 		},
 		timestamp: new Date().toISOString(),
 		apiKey: process.env.GEMINI_API_KEY ? 'configured' : 'missing'

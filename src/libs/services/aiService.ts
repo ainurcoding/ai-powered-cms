@@ -1,4 +1,4 @@
-import { getTextModel, getImageModel, validateAIConfig } from '@/libs/config/ai';
+import { getTextModel, validateAIConfig } from '@/libs/config/ai';
 import logger from '@/libs/core/logger';
 
 // AI Service Interfaces
@@ -133,14 +133,29 @@ export class AIService {
 
 	/**
 	 * Generate image using AI
-	 * Multi-API fallback system: Hugging Face → Replicate → OpenAI → Placeholder
+	 * Multi-API fallback system: Hugging Face → OpenAI → Placeholder
 	 * Stops at first successful service to save credits
 	 */
 	async generateImage(request: IImageGenerationRequest): Promise<IImageGenerationResponse> {
-		// Skip Hugging Face and Replicate (both need payment)
-		logger.info('Skipping Hugging Face and Replicate APIs due to credit/payment requirements, trying OpenAI...');
+		// 1. Try Hugging Face first (if API key exists)
+		if (process.env.HUGGINGFACE_API_KEY) {
+			try {
+				logger.info('Trying Hugging Face API...');
+				const result = await this.generateImageWithStableDiffusion(request);
+				logger.info('Hugging Face API successful, stopping here to save credits');
+				return result;
+			} catch (hfError: any) {
+				logger.warn('Hugging Face API failed:', hfError.message);
+				// Check if it's a credit limit error
+				if (hfError.message?.includes('exceeded your monthly included credits') || 
+					hfError.message?.includes('402') || 
+					hfError.message?.includes('ProviderApiError')) {
+					logger.warn('Hugging Face credit limit reached, trying next service...');
+				}
+			}
+		}
 		
-		// 1. Try OpenAI DALL-E (if API key exists)
+		// 2. Try OpenAI DALL-E (if API key exists)
 		if (process.env.OPENAI_API_KEY) {
 			try {
 				logger.info('Trying OpenAI DALL-E API...');
@@ -158,8 +173,8 @@ export class AIService {
 			}
 		}
 		
-		// 2. Fallback to placeholder
-		logger.warn('OpenAI API failed or not configured, using placeholder');
+		// 3. Fallback to placeholder
+		logger.warn('All AI APIs failed or not configured, using placeholder');
 		return await this.generatePlaceholderImage(request);
 	}
 
@@ -247,28 +262,6 @@ Focus on improving search engine visibility and user engagement.
 		`.trim();
 	}
 
-	/**
-	 * Build image generation prompt
-	 */
-	private buildImagePrompt(request: IImageGenerationRequest): string {
-		const { prompt, style, size, aspectRatio } = request;
-		
-		return `
-Generate a ${style} style image for: ${prompt}
-Size: ${size}
-Aspect Ratio: ${aspectRatio}
-
-Please provide the response in the following JSON format:
-{
-  "imageUrl": "generated_image_url",
-  "prompt": "original_prompt",
-  "style": "${style}",
-  "dimensions": {"width": 1024, "height": 768}
-}
-
-Create a high-quality, relevant image that matches the description.
-		`.trim();
-	}
 
 	/**
 	 * Build auto-tagging prompt
@@ -380,32 +373,6 @@ Focus on relevant, specific tags that improve content discoverability.
 		}
 	}
 
-	/**
-	 * Parse image generation response
-	 */
-	private parseImageResponse(text: string, request: IImageGenerationRequest): IImageGenerationResponse {
-		try {
-			// Since Gemini can't generate images, we'll create a mock response
-			// In production, this should integrate with actual image generation APIs
-			
-			// Generate a realistic mock image URL using placeholder service
-			const dimensions = this.calculateImageDimensions(request.size, request.aspectRatio);
-			const mockImageUrl = this.generatePlaceholderImageUrl(request, dimensions);
-			
-			// Enhanced prompt description
-			const enhancedPrompt = this.generateImageDescription(request);
-			
-			return {
-				imageUrl: mockImageUrl,
-				prompt: enhancedPrompt,
-				style: request.style || 'photographic',
-				dimensions: dimensions
-			};
-		} catch (error) {
-			logger.error('Failed to parse image response:', error);
-			throw new Error('Invalid AI response format');
-		}
-	}
 
 	/**
 	 * Generate enhanced image description
@@ -498,7 +465,6 @@ Focus on relevant, specific tags that improve content discoverability.
 			// Enhanced prompt based on style
 			const enhancedPrompt = this.buildStableDiffusionPrompt(request);
 			
-			
 			// Generate image using Hugging Face with provider
 			const response = await hfInference.textToImage({
 				model: 'black-forest-labs/FLUX.1-dev',
@@ -511,7 +477,7 @@ Focus on relevant, specific tags that improve content discoverability.
 			});
 			
 			// Convert blob to base64 URL
-			const imageUrl = await this.convertBlobToUrl(response as Blob);
+			const imageUrl = await this.convertBlobToUrl(response as unknown as Blob);
 			
 			return {
 				imageUrl,
@@ -553,7 +519,6 @@ Focus on relevant, specific tags that improve content discoverability.
 		try {
 			// Convert blob to buffer
 			const buffer = await blob.arrayBuffer();
-			const base64 = Buffer.from(buffer).toString('base64');
 			
 			// Save to storage
 			const savedPath = await this.saveImageToStorage(buffer);
@@ -655,92 +620,7 @@ Focus on relevant, specific tags that improve content discoverability.
 		}
 	}
 
-	/**
-	 * Generate image using Replicate API
-	 */
-	private async generateImageWithReplicate(request: IImageGenerationRequest): Promise<IImageGenerationResponse> {
-		const { prompt, style = 'photographic', size = 'medium', aspectRatio = '16:9' } = request;
-		
-		// Build enhanced prompt for Replicate
-		const enhancedPrompt = this.buildStableDiffusionPrompt(request);
-		
-		// Calculate dimensions
-		const dimensions = this.calculateImageDimensions(size, aspectRatio);
-		
-		// Replicate API call with updated model
-		const response = await fetch('https://api.replicate.com/v1/predictions', {
-			method: 'POST',
-			headers: {
-				'Authorization': `Token ${process.env.REPLICATE_API_TOKEN}`,
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				version: 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b', // SDXL 1.0
-				input: {
-					prompt: enhancedPrompt,
-					width: dimensions.width,
-					height: dimensions.height,
-					num_inference_steps: 20,
-					guidance_scale: 7.5,
-					scheduler: 'K_EULER'
-				}
-			})
-		});
-		
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`Replicate API error: ${response.status} ${response.statusText} - ${errorText}`);
-		}
-		
-		const result = await response.json();
-		
-		// Wait for completion and get image URL
-		const imageUrl = await this.waitForReplicateCompletion(result.id);
-		
-		// Save to temporary storage
-		const savedImageUrl = await this.saveImageToStorageFromUrl(imageUrl);
-		
-		return {
-			imageUrl: savedImageUrl,
-			prompt: enhancedPrompt,
-			style,
-			dimensions,
-			ttl: '12 hours',
-			expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
-		};
-	}
 	
-	/**
-	 * Wait for Replicate prediction to complete
-	 */
-	private async waitForReplicateCompletion(predictionId: string): Promise<string> {
-		const maxAttempts = 30; // 5 minutes max
-		let attempts = 0;
-		
-		while (attempts < maxAttempts) {
-			const response = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-				headers: {
-					'Authorization': `Token ${process.env.REPLICATE_API_TOKEN}`
-				}
-			});
-			
-			const result = await response.json();
-			
-			if (result.status === 'succeeded') {
-				return result.output[0];
-			}
-			
-			if (result.status === 'failed') {
-				throw new Error('Replicate prediction failed');
-			}
-			
-			// Wait 10 seconds before next attempt
-			await new Promise(resolve => setTimeout(resolve, 10000));
-			attempts++;
-		}
-		
-		throw new Error('Replicate prediction timeout');
-	}
 	
 	/**
 	 * Save image from URL to temporary storage
@@ -789,7 +669,7 @@ Focus on relevant, specific tags that improve content discoverability.
 	 * Generate image using OpenAI DALL-E
 	 */
 	private async generateImageWithDALLE(request: IImageGenerationRequest): Promise<IImageGenerationResponse> {
-		const { prompt, style = 'photographic', size = 'medium', aspectRatio = '16:9' } = request;
+		const { style = 'photographic', size = 'medium', aspectRatio = '16:9' } = request;
 		
 		// Build enhanced prompt for DALL-E
 		const enhancedPrompt = this.buildStableDiffusionPrompt(request);
@@ -946,7 +826,7 @@ Focus on relevant, specific tags that improve content discoverability.
 	 * Generate comprehensive content when AI response is not available
 	 */
 	private generateComprehensiveContent(request: IContentGenerationRequest, title: string): string {
-		const { topic, keywords, contentType, tone, language } = request;
+		const { topic, keywords, contentType, language } = request;
 		const lang = language === 'id' ? 'Indonesian' : 'English';
 		
 		// Generate content based on content type
@@ -1092,6 +972,111 @@ ${topic} adalah skill yang sangat berguna dan dapat dipelajari oleh siapa saja. 
 	private generateBlogContent(title: string, topic: string, keywords: string[], lang: string): string {
 		const keywordText = keywords ? keywords.join(', ') : '';
 		
+		if (lang === 'English') {
+			return this.generateEnglishBlogContent(title, topic, keywordText);
+		}
+
+		return this.generateIndonesianBlogContent(title, topic, keywordText);
+	}
+
+	private generateEnglishBlogContent(title: string, topic: string, keywordText: string): string {
+		return `# ${title}
+
+## Introduction
+
+Hello readers! Today we will discuss ${topic}, a very interesting and relevant topic in today's digital era.
+
+${keywordText ? `In this article, we will explore various aspects related to ${keywordText}.` : ''}
+
+## Why is ${topic} Important?
+
+${topic} plays a very important role in our daily lives. Let's look at some reasons why this topic is worth learning and understanding.
+
+### 1. Relevance in the Modern Era
+
+In the rapidly evolving digital age, ${topic} becomes increasingly relevant and important. Many aspects of our lives are influenced by the development of ${topic}.
+
+### 2. Opportunities and Benefits
+
+Understanding ${topic} opens up various opportunities and benefits, both personally and professionally.
+
+## Important Aspects
+
+### Technical Aspects
+
+From a technical standpoint, ${topic} involves various components and concepts that need to be understood:
+
+- **Basics**: Strong foundation
+- **Implementation**: How to apply in practice
+- **Optimization**: How to get the best results
+
+### Practical Aspects
+
+Practically, ${topic} can be applied in various contexts:
+
+- **Daily use**: Applications in life
+- **Professional development**: Career advancement
+- **Innovation**: Creating new solutions
+
+## Tips and Suggestions
+
+### For Beginners
+
+If you're new to ${topic}, here are some tips that can help:
+
+1. **Start from the basics**: Don't rush
+2. **Consistency**: Learn regularly
+3. **Practice**: Apply what you learn
+4. **Community**: Join relevant communities
+
+### For Experienced Users
+
+For those already familiar with ${topic}, consider:
+
+- **Exploring advanced aspects**
+- **Sharing knowledge**
+- **Mentoring others**
+- **Exploring latest innovations**
+
+## Trends and Future
+
+### Current Trends
+
+${topic} continues to evolve with exciting new trends:
+
+- **Latest technology**: Innovations that change how we work
+- **New methodologies**: More effective approaches
+- **Tools and platforms**: Tools that make implementation easier
+
+### Future Predictions
+
+Looking ahead, ${topic} will continue to develop with:
+
+- **Better integration**
+- **More sophisticated automation**
+- **Wider accessibility**
+
+## Conclusion
+
+${topic} is a very interesting topic with great potential for the future. With good understanding and proper implementation, we can leverage ${topic} to achieve various goals.
+
+### Key Takeaways
+
+- ${topic} plays an important role in the modern era
+- Good understanding opens up various opportunities
+- Consistency and practice are the keys to success
+- The future of ${topic} is very promising
+
+### Call to Action
+
+Let's start learning ${topic} more deeply and apply it in our lives. Share your experience in the comments and don't hesitate to ask if there's anything you'd like to discuss!
+
+---
+
+**Thank you for reading this article. Hope it's useful!** 🙏`;
+	}
+
+	private generateIndonesianBlogContent(title: string, topic: string, keywordText: string): string {
 		return `# ${title}
 
 ## Pengantar
@@ -1198,7 +1183,7 @@ Mari kita mulai mempelajari ${topic} lebih dalam dan menerapkannya dalam kehidup
 	/**
 	 * Generate news content
 	 */
-	private generateNewsContent(title: string, topic: string, keywords: string[], lang: string): string {
+	private generateNewsContent(title: string, topic: string, keywords: string[], _lang: string): string {
 		const keywordText = keywords ? keywords.join(', ') : '';
 		
 		return `# ${title}
@@ -1284,7 +1269,7 @@ ${topic} terus menunjukkan potensi yang besar untuk masa depan. Dengan dukungan 
 	/**
 	 * Generate review content
 	 */
-	private generateReviewContent(title: string, topic: string, keywords: string[], lang: string): string {
+	private generateReviewContent(title: string, topic: string, keywords: string[], _lang: string): string {
 		const keywordText = keywords ? keywords.join(', ') : '';
 		
 		return `# ${title}
