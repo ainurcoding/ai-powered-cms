@@ -1245,20 +1245,14 @@ Focus on relevant, specific tags that improve content discoverability.
 		
 		// Convert base64 to buffer and save to storage
 		const imageBuffer = Buffer.from(imageData, 'base64');
-		const savedImageUrl = await this.saveImageToStorage(imageBuffer, 'png');
+		const savedImageUrl = await this.saveImageToStorage(imageBuffer);
 		
 		return {
 			imageUrl: savedImageUrl,
 			prompt: enhancedPrompt,
 			style,
 			dimensions: this.calculateImageDimensions(size, aspectRatio),
-			ttl: '12 hours',
-			metadata: {
-				model: 'imagen-4.0-generate-001',
-				provider: 'google-cloud-vertex-ai',
-				version: '4.0',
-				generatedAt: new Date().toISOString()
-			}
+			ttl: '12 hours'
 		};
 	}
 
@@ -1378,7 +1372,7 @@ Focus on relevant, specific tags that improve content discoverability.
 	/**
 	 * Get DALL-E size format
 	 */
-	private getDALLESize(size: string, aspectRatio: string): string {
+	private getDALLESize(_size: string, aspectRatio: string): string {
 		// DALL-E 3 only supports specific sizes
 		if (aspectRatio === '1:1') return '1024x1024';
 		if (aspectRatio === '16:9') return '1792x1024';
