@@ -10,6 +10,10 @@ export const AI_CONFIG = {
 	GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
 	GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
 	
+	// Google Cloud Vertex AI (Imagen 4)
+	GOOGLE_CLOUD_PROJECT_ID: process.env.GOOGLE_CLOUD_PROJECT_ID || '',
+	GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
+	
 	// Content Generation Settings
 	MAX_TOKENS: parseInt(process.env.AI_MAX_TOKENS || '2048'),
 	TEMPERATURE: parseFloat(process.env.AI_TEMPERATURE || '0.7'),

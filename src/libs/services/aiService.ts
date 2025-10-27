@@ -227,7 +227,26 @@ export class AIService {
 			}
 		}
 		
-		// 2. Try OpenAI DALL-E (if API key exists)
+		// 2. Try Google Cloud Vertex AI (if API key exists)
+		if (process.env.GOOGLE_CLOUD_PROJECT_ID && process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+			try {
+				logger.info('Trying Google Cloud Vertex AI...');
+				const result = await this.generateImageWithVertexAI(request);
+				logger.info('Google Cloud Vertex AI successful, stopping here to save credits');
+				return result;
+			} catch (vertexError: any) {
+				logger.warn('Google Cloud Vertex AI failed:', vertexError.message);
+				// Check if it's a quota limit error
+				if (vertexError.message?.includes('quota') || 
+					vertexError.message?.includes('limit') || 
+					vertexError.message?.includes('billing') ||
+					vertexError.message?.includes('403')) {
+					logger.warn('Google Cloud Vertex AI quota limit reached, trying next service...');
+				}
+			}
+		}
+
+		// 3. Try OpenAI DALL-E (if API key exists)
 		if (process.env.OPENAI_API_KEY) {
 			try {
 				logger.info('Trying OpenAI DALL-E API...');
@@ -247,7 +266,7 @@ export class AIService {
 			}
 		}
 		
-		// 3. Fallback to placeholder
+		// 4. Fallback to placeholder
 		logger.warn('All AI APIs failed or not configured, using placeholder');
 		return await this.generatePlaceholderImage(request);
 	}
@@ -1174,6 +1193,121 @@ Focus on relevant, specific tags that improve content discoverability.
 		}
 	}
 	
+	/**
+	 * Generate image using Google Cloud Vertex AI (Imagen 4)
+	 */
+	private async generateImageWithVertexAI(request: IImageGenerationRequest): Promise<IImageGenerationResponse> {
+		const { style = 'photographic', size = 'medium', aspectRatio = '16:9' } = request;
+		
+		// Build enhanced prompt for Imagen 4
+		const enhancedPrompt = this.buildStableDiffusionPrompt(request);
+		
+		// Vertex AI API call using Imagen 4
+		const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+		const location = 'us-central1'; // Default location for Imagen
+		
+		const response = await fetch(`https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/imagen-4.0-generate-001:predict`, {
+			method: 'POST',
+			headers: {
+				'Authorization': `Bearer ${await this.getGoogleCloudAccessToken()}`,
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				instances: [{
+					prompt: enhancedPrompt,
+					parameters: {
+						numberOfImages: 1,
+						aspectRatio: this.getVertexAIAspectRatio(aspectRatio),
+						negativePrompt: 'blurry, low quality, distorted, deformed, text rendering issues',
+						style: this.getVertexAIStyle(style)
+					}
+				}]
+			})
+		});
+		
+		if (!response.ok) {
+			const errorText = await response.text();
+			logger.error('Vertex AI Imagen 4 error details:', {
+				status: response.status,
+				statusText: response.statusText,
+				errorBody: errorText,
+				requestBody: {
+					prompt: enhancedPrompt,
+					aspectRatio: this.getVertexAIAspectRatio(aspectRatio),
+					style: this.getVertexAIStyle(style)
+				}
+			});
+			throw new Error(`Google Cloud Vertex AI Imagen 4 error: ${response.status} ${response.statusText} - ${errorText}`);
+		}
+		
+		const result = await response.json();
+		const imageData = result.predictions[0].bytesBase64Encoded;
+		
+		// Convert base64 to buffer and save to storage
+		const imageBuffer = Buffer.from(imageData, 'base64');
+		const savedImageUrl = await this.saveImageToStorage(imageBuffer, 'png');
+		
+		return {
+			imageUrl: savedImageUrl,
+			prompt: enhancedPrompt,
+			style,
+			dimensions: this.calculateImageDimensions(size, aspectRatio),
+			ttl: '12 hours',
+			metadata: {
+				model: 'imagen-4.0-generate-001',
+				provider: 'google-cloud-vertex-ai',
+				version: '4.0',
+				generatedAt: new Date().toISOString()
+			}
+		};
+	}
+
+	/**
+	 * Get Google Cloud access token
+	 */
+	private async getGoogleCloudAccessToken(): Promise<string> {
+		// This is a simplified version - in production, use proper Google Cloud authentication
+		const { GoogleAuth: googleAuth } = await import('google-auth-library');
+		const auth = new googleAuth({
+			scopes: ['https://www.googleapis.com/auth/cloud-platform']
+		});
+		const client = await auth.getClient();
+		const accessToken = await client.getAccessToken();
+		return accessToken.token || '';
+	}
+
+	/**
+	 * Get Vertex AI aspect ratio format
+	 */
+	private getVertexAIAspectRatio(aspectRatio: string): string {
+		const ratioMap: Record<string, string> = {
+			'1:1': '1:1',
+			'16:9': '16:9',
+			'9:16': '9:16',
+			'4:3': '4:3',
+			'3:4': '3:4',
+			'3:2': '3:2',
+			'2:3': '2:3'
+		};
+		return ratioMap[aspectRatio] || '1:1';
+	}
+
+	/**
+	 * Get Vertex AI style format
+	 */
+	private getVertexAIStyle(style: string): string {
+		const styleMap: Record<string, string> = {
+			'photographic': 'photographic',
+			'realistic': 'realistic',
+			'artistic': 'artistic',
+			'cartoon': 'cartoon',
+			'anime': 'anime',
+			'painting': 'painting',
+			'sketch': 'sketch'
+		};
+		return styleMap[style] || 'photographic';
+	}
+
 	/**
 	 * Generate image using OpenAI DALL-E
 	 */
