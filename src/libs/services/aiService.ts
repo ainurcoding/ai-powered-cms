@@ -65,6 +65,25 @@ export interface IAutoTaggingResponse {
 	reasoning: string;
 }
 
+export interface IContentSuggestionsRequest {
+	topic: string;
+	contentType: 'blog' | 'article' | 'tutorial' | 'news' | 'review';
+	language: 'id' | 'en';
+	count?: number; // Number of suggestions to generate
+}
+
+export interface IContentSuggestionsResponse {
+	suggestions: {
+		title: string;
+		excerpt: string;
+		estimatedReadTime: number;
+		seoScore: number;
+		suggestedTags: string[];
+		suggestedCategory: string;
+	}[];
+	totalSuggestions: number;
+}
+
 /**
  * AI Content Generation Service
  */
@@ -2086,6 +2105,212 @@ ${topic} layak untuk dipelajari dan digunakan, terutama jika sesuai dengan kebut
 		}
 		
 		return 'General';
+	}
+
+	/**
+	 * Generate content suggestions (multiple titles and ideas)
+	 */
+	async generateContentSuggestions(request: IContentSuggestionsRequest): Promise<IContentSuggestionsResponse> {
+		try {
+			this.validateConfig();
+
+			const { topic, contentType, language, count = 5 } = request;
+
+			// Translate topic to English if needed
+			const { translatedTopic } = this.translateToEnglish(topic, []);
+
+			// Build prompt for content suggestions
+			const prompt = this.buildContentSuggestionsPrompt(translatedTopic, contentType, language, count);
+
+			// Generate suggestions using AI
+			const model = getTextModel();
+			const result = await model.generateContent(prompt);
+			const response = await result.response;
+			const text = response.text();
+
+			// Parse AI response
+			const suggestions = this.parseContentSuggestionsResponse(text, count);
+
+			return {
+				suggestions,
+				totalSuggestions: suggestions.length
+			};
+
+		} catch (error) {
+			logger.error('Content suggestions generation failed:', error);
+			
+			// Fallback to default suggestions
+			return this.generateFallbackContentSuggestions(request);
+		}
+	}
+
+	/**
+	 * Build prompt for content suggestions
+	 */
+	private buildContentSuggestionsPrompt(topic: string, contentType: string, language: string, count: number): string {
+		const lang = language === 'en' ? 'English' : 'Indonesian';
+		const contentTypeText = contentType.charAt(0).toUpperCase() + contentType.slice(1);
+
+		return `You are a professional content strategist. Generate ${count} creative and engaging ${contentTypeText} title suggestions about "${topic}".
+
+Requirements:
+- Language: ${lang}
+- Content Type: ${contentTypeText}
+- Each title should be unique and compelling
+- Include brief excerpt (1-2 sentences) for each title
+- Estimate reading time for each suggestion
+- Calculate SEO score (0-100) for each title
+- Suggest relevant tags for each title
+- Suggest appropriate category for each title
+
+Please provide the response in the following JSON format:
+{
+  "suggestions": [
+    {
+      "title": "Compelling title 1",
+      "excerpt": "Brief description of what this content would cover",
+      "estimatedReadTime": 5,
+      "seoScore": 85,
+      "suggestedTags": ["tag1", "tag2", "tag3"],
+      "suggestedCategory": "Category Name"
+    },
+    {
+      "title": "Compelling title 2",
+      "excerpt": "Brief description of what this content would cover",
+      "estimatedReadTime": 7,
+      "seoScore": 90,
+      "suggestedTags": ["tag1", "tag2", "tag3"],
+      "suggestedCategory": "Category Name"
+    }
+  ]
+}`;
+	}
+
+	/**
+	 * Parse content suggestions response from AI
+	 */
+	private parseContentSuggestionsResponse(text: string, expectedCount: number): any[] {
+		try {
+			// Try to extract JSON from the response
+			let jsonText = text.trim();
+			
+			// Remove markdown code blocks if present
+			if (jsonText.includes('```json')) {
+				jsonText = jsonText.split('```json')[1].split('```')[0].trim();
+			} else if (jsonText.includes('```')) {
+				jsonText = jsonText.split('```')[1].split('```')[0].trim();
+			}
+
+			// Try to find JSON object
+			const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+			if (jsonMatch) {
+				jsonText = jsonMatch[0];
+			}
+
+			const parsed = JSON.parse(jsonText);
+			
+			if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+				return parsed.suggestions.slice(0, expectedCount);
+			}
+
+			throw new Error('Invalid response format');
+		} catch (error) {
+			logger.warn('Failed to parse content suggestions response, using fallback');
+			return this.generateFallbackSuggestions(expectedCount);
+		}
+	}
+
+	/**
+	 * Generate fallback content suggestions when AI fails
+	 */
+	private generateFallbackContentSuggestions(request: IContentSuggestionsRequest): IContentSuggestionsResponse {
+		const { topic, contentType, count = 5 } = request;
+		const suggestions = [];
+
+		for (let i = 1; i <= count; i++) {
+			suggestions.push({
+				title: `${topic}: ${this.getFallbackTitleVariation(i, contentType)}`,
+				excerpt: `This ${contentType} explores various aspects of ${topic} and provides valuable insights.`,
+				estimatedReadTime: Math.floor(Math.random() * 10) + 3,
+				seoScore: Math.floor(Math.random() * 20) + 70,
+				suggestedTags: this.getFallbackTags(topic),
+				suggestedCategory: this.getCategoryFromTopic(topic)
+			});
+		}
+
+		return {
+			suggestions,
+			totalSuggestions: suggestions.length
+		};
+	}
+
+	/**
+	 * Generate fallback suggestions when parsing fails
+	 */
+	private generateFallbackSuggestions(count: number): any[] {
+		const suggestions = [];
+		const baseTitles = [
+			'Ultimate Guide to',
+			'Complete Beginner\'s Guide to',
+			'Advanced Techniques for',
+			'Best Practices for',
+			'Common Mistakes in',
+			'Step-by-Step Tutorial:',
+			'Everything You Need to Know About',
+			'Pro Tips for',
+			'Comprehensive Overview of',
+			'Expert Insights on'
+		];
+
+		for (let i = 0; i < count; i++) {
+			const title = baseTitles[i % baseTitles.length] + ' Your Topic';
+			suggestions.push({
+				title,
+				excerpt: 'A detailed exploration of the topic with practical examples and actionable advice.',
+				estimatedReadTime: Math.floor(Math.random() * 10) + 3,
+				seoScore: Math.floor(Math.random() * 20) + 70,
+				suggestedTags: ['guide', 'tutorial', 'tips'],
+				suggestedCategory: 'General'
+			});
+		}
+
+		return suggestions;
+	}
+
+	/**
+	 * Get fallback title variations
+	 */
+	private getFallbackTitleVariation(index: number, contentType: string): string {
+		const variations = {
+			blog: ['Complete Guide', 'Ultimate Tips', 'Best Practices', 'Common Mistakes', 'Expert Insights'],
+			article: ['In-Depth Analysis', 'Comprehensive Review', 'Detailed Overview', 'Professional Guide', 'Technical Deep Dive'],
+			tutorial: ['Step-by-Step Guide', 'Beginner\'s Tutorial', 'Advanced Techniques', 'Practical Examples', 'Hands-On Learning'],
+			news: ['Latest Updates', 'Breaking News', 'Recent Developments', 'Industry Report', 'Trend Analysis'],
+			review: ['Honest Review', 'Detailed Comparison', 'Pros and Cons', 'User Experience', 'Performance Analysis']
+		};
+
+		const typeVariations = variations[contentType as keyof typeof variations] || variations.blog;
+		return typeVariations[index % typeVariations.length];
+	}
+
+	/**
+	 * Get fallback tags based on topic
+	 */
+	private getFallbackTags(topic: string): string[] {
+		const topicLower = topic.toLowerCase();
+		const tags = [];
+
+		if (topicLower.includes('react') || topicLower.includes('javascript')) {
+			tags.push('javascript', 'react', 'programming');
+		} else if (topicLower.includes('business') || topicLower.includes('marketing')) {
+			tags.push('business', 'marketing', 'strategy');
+		} else if (topicLower.includes('design') || topicLower.includes('ui')) {
+			tags.push('design', 'ui', 'ux');
+		} else {
+			tags.push('guide', 'tips', 'tutorial');
+		}
+
+		return tags;
 	}
 }
 

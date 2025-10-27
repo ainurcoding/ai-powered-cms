@@ -1,5 +1,5 @@
 import { TRequestFunction, InvalidParameterException } from '@/libs/core';
-import { aiService, IContentGenerationRequest, ISEOOptimizationRequest, IImageGenerationRequest, IAutoTaggingRequest } from '@/libs/services/aiService';
+import { aiService, IContentGenerationRequest, ISEOOptimizationRequest, IImageGenerationRequest, IAutoTaggingRequest, IContentSuggestionsRequest } from '@/libs/services/aiService';
 
 /**
  * Generate content using AI
@@ -109,36 +109,31 @@ const getStatus: TRequestFunction = async (_req) => {
  * Get content suggestions
  */
 const getContentSuggestions: TRequestFunction = async (req) => {
-	const { topic, contentType, language } = req.query;
+	const { topic, contentType, language, count } = req.query;
 
 	if (!topic) {
 		throw new InvalidParameterException('Topic is required');
 	}
 
 	// Generate content suggestions using AI
-	const request: IContentGenerationRequest = {
+	const request: IContentSuggestionsRequest = {
 		topic: topic as string,
 		contentType: (contentType as any) || 'blog',
-		tone: 'professional',
-		length: 'short',
-		language: (language as any) || 'id'
+		language: (language as any) || 'id',
+		count: count ? parseInt(count as string) : 5
 	};
 
-	const result = await aiService.generateContent(request);
-
-	// Return suggestions in a different format
-	const suggestions = {
-		suggestedTitle: result.title,
-		suggestedExcerpt: result.excerpt,
-		suggestedTags: result.suggestedTags,
-		suggestedCategory: result.suggestedCategory,
-		estimatedReadTime: result.estimatedReadTime,
-		seoScore: result.seoScore
-	};
+	const result = await aiService.generateContentSuggestions(request);
 
 	return {
-		message: 'Content suggestions generated',
-		result: suggestions
+		message: 'Content suggestions generated successfully',
+		result: {
+			suggestions: result.suggestions,
+			totalSuggestions: result.totalSuggestions,
+			topic: topic as string,
+			contentType: contentType || 'blog',
+			language: language || 'id'
+		}
 	};
 };
 

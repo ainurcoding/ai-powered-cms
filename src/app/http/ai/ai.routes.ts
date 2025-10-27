@@ -416,7 +416,7 @@ router.post('/ai/auto-tagging', authorizeMiddleware, requestValidator({ requestT
  * @swagger
  * /ai/content-suggestions:
  *   get:
- *     summary: Get content suggestions
+ *     summary: Get content suggestions (multiple titles and ideas)
  *     tags: [AI]
  *     security:
  *       - bearerAuth: []
@@ -439,35 +439,65 @@ router.post('/ai/auto-tagging', authorizeMiddleware, requestValidator({ requestT
  *           type: string
  *           enum: [id, en]
  *         description: Content language
+ *       - in: query
+ *         name: count
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 10
+ *           default: 5
+ *         description: Number of suggestions to generate
  *     responses:
  *       200:
- *         description: Content suggestions generated
+ *         description: Content suggestions generated successfully
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
  *                 message:
  *                   type: string
- *                 data:
+ *                   example: "Content suggestions generated successfully"
+ *                 result:
  *                   type: object
  *                   properties:
- *                     suggestedTitle:
- *                       type: string
- *                     suggestedExcerpt:
- *                       type: string
- *                     suggestedTags:
+ *                     suggestions:
  *                       type: array
  *                       items:
- *                         type: string
- *                     suggestedCategory:
+ *                         type: object
+ *                         properties:
+ *                           title:
+ *                             type: string
+ *                             example: "Ultimate Guide to React Hooks"
+ *                           excerpt:
+ *                             type: string
+ *                             example: "Learn how to use React Hooks effectively in your applications"
+ *                           estimatedReadTime:
+ *                             type: number
+ *                             example: 8
+ *                           seoScore:
+ *                             type: number
+ *                             example: 85
+ *                           suggestedTags:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ *                             example: ["react", "hooks", "javascript"]
+ *                           suggestedCategory:
+ *                             type: string
+ *                             example: "Programming"
+ *                     totalSuggestions:
+ *                       type: number
+ *                       example: 5
+ *                     topic:
  *                       type: string
- *                     estimatedReadTime:
- *                       type: number
- *                     seoScore:
- *                       type: number
+ *                       example: "React Hooks"
+ *                     contentType:
+ *                       type: string
+ *                       example: "blog"
+ *                     language:
+ *                       type: string
+ *                       example: "en"
  *       400:
  *         description: Bad request
  *       401:

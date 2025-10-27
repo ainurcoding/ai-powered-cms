@@ -47,7 +47,8 @@ export const createAutoTaggingValidation = v.object({
 export const createContentSuggestionsQueryValidation = v.object({
 	topic: v.string('Topic is required'),
 	contentType: v.optional(v.picklist(['blog', 'article', 'tutorial', 'news', 'review'], 'Invalid content type')),
-	language: v.optional(v.picklist(['id', 'en'], 'Invalid language'))
+	language: v.optional(v.picklist(['id', 'en'], 'Invalid language')),
+	count: v.optional(v.pipe(v.string(), v.transform((input) => parseInt(input))))
 });
 
 export default {

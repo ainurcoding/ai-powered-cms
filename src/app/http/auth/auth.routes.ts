@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requestHandler, requestValidator } from '@/libs/core';
 import controller from './auth.controller';
 import request from './auth.request';
+import googleAuthRoutes from './googleAuth.routes';
 
 const router = Router();
 
@@ -92,5 +93,8 @@ router.get('/auth/logout', requestHandler(controller.logout));
  * }
  */
 router.get('/auth/check-token', requestHandler(controller.checkToken));
+
+// Google OAuth routes
+router.use('/auth/google', googleAuthRoutes);
 
 export default router;

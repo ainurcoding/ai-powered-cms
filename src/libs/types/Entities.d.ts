@@ -9,6 +9,7 @@ declare namespace Entity {
 		is_active?: boolean
 		avatar?: string
 		bio?: string
+		google_id?: string // Google OAuth ID
 		created_at?: Date
 		updated_at?: Date
 	}
