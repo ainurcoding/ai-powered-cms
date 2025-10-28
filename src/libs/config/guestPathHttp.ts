@@ -76,6 +76,12 @@ const guestPath: IGuestPathCfg[] = [
 		// Test SEO optimization endpoint for debugging (no auth required)
 		path: '/ai/test-optimize-seo',
 		method: ['post']
+	},
+	{
+		// Google OAuth endpoints (no auth required)
+		path: '/auth/google',
+		withSubPath: true,
+		method: ['get']
 	}
 ];
 

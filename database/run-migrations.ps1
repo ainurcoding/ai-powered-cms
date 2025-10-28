@@ -35,7 +35,10 @@ $migrations = @(
     "004_create_tags_table.sql",
     "005_create_posts_table.sql",
     "006_create_post_tags_table.sql",
-    "007_create_media_table.sql"
+    "007_create_media_table.sql",
+    "008_add_avatar_bio_to_users.sql",
+    "009_add_google_id_to_users.sql",
+    "010_allow_null_password_for_google_oauth.sql"
 )
 
 foreach ($migration in $migrations) {

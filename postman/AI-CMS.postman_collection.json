@@ -104,6 +104,157 @@
 			"description": "Authentication endpoints for login, logout, and token validation"
 		},
 		{
+			"name": "Google OAuth",
+			"item": [
+				{
+					"name": "Get Google Auth URL",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    console.log('Google Auth URL:', response.result.authUrl);",
+									"    console.log('Copy this URL and open in browser to test Google OAuth flow');",
+									"    console.log('After login, Google will redirect to callback URL');",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/google/url",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google", "url"]
+						},
+						"description": "Get Google OAuth authorization URL. Use this URL to redirect users to Google login page."
+					},
+					"response": []
+				},
+				{
+					"name": "Google OAuth Callback (Test)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('token', response.result.token);",
+									"    console.log('Google OAuth Success!');",
+									"    console.log('User:', response.result.user);",
+									"    console.log('Is New User:', response.result.isNewUser);",
+									"    console.log('Token saved:', response.result.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/google/callback?code=test_code&state=test_state",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google", "callback"],
+							"query": [
+								{
+									"key": "code",
+									"value": "test_code",
+									"description": "Authorization code from Google (this is just for testing - use real code from browser)"
+								},
+								{
+									"key": "state",
+									"value": "test_state",
+									"description": "State parameter from Google"
+								}
+							]
+						},
+						"description": "Handle Google OAuth callback. This endpoint is called by Google after user login. In real usage, Google will redirect here with actual authorization code."
+					},
+					"response": []
+				},
+				{
+					"name": "Test Google OAuth Config",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/google/test-config",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google", "test-config"]
+						},
+						"description": "Test Google OAuth configuration. Check if Client ID, Client Secret, and Callback URL are properly configured."
+					},
+					"response": []
+				},
+				{
+					"name": "Complete Google OAuth Flow Test",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Step 1: Get Google Auth URL",
+									"pm.sendRequest({",
+									"    url: pm.collectionVariables.get('baseUrl') + '/auth/google/url',",
+									"    method: 'GET'",
+									"}, function (err, response) {",
+									"    if (err) {",
+									"        console.log('Error getting Google Auth URL:', err);",
+									"    } else {",
+									"        const data = response.json();",
+									"        console.log('Google Auth URL:', data.result.authUrl);",
+									"        console.log('');",
+									"        console.log('=== GOOGLE OAUTH FLOW TEST ===');",
+									"        console.log('1. Copy the URL above');",
+									"        console.log('2. Open it in your browser');",
+									"        console.log('3. Login with your Google account');",
+									"        console.log('4. Google will redirect to callback URL');",
+									"        console.log('5. Check the callback response for user data and token');",
+									"        console.log('');",
+									"        console.log('Expected callback URL:', pm.collectionVariables.get('baseUrl') + '/auth/google/callback');",
+									"    }",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/google/test-config",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "google", "test-config"]
+						},
+						"description": "Complete test flow for Google OAuth. This will show you the Google Auth URL and guide you through the complete OAuth flow."
+					},
+					"response": []
+				}
+			],
+			"description": "Google OAuth integration for social login. Users can sign in with their Google accounts."
+		},
+		{
 			"name": "Posts",
 			"item": [
 				{
