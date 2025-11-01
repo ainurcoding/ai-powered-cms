@@ -182,7 +182,7 @@
 								}
 							]
 						},
-						"description": "Handle Google OAuth callback. This endpoint is called by Google after user login. In real usage, Google will redirect here with actual authorization code."
+						"description": "Handle Google OAuth callback. IMPORTANT: In production, Google redirects to FRONTEND (/auth/google/callback), then frontend calls this backend endpoint with the authorization code to exchange for token."
 					},
 					"response": []
 				},
@@ -222,14 +222,14 @@
 									"        const data = response.json();",
 									"        console.log('Google Auth URL:', data.result.authUrl);",
 									"        console.log('');",
-									"        console.log('=== GOOGLE OAUTH FLOW TEST ===');",
-									"        console.log('1. Copy the URL above');",
-									"        console.log('2. Open it in your browser');",
-									"        console.log('3. Login with your Google account');",
-									"        console.log('4. Google will redirect to callback URL');",
-									"        console.log('5. Check the callback response for user data and token');",
-									"        console.log('');",
-									"        console.log('Expected callback URL:', pm.collectionVariables.get('baseUrl') + '/auth/google/callback');",
+						"        console.log('=== GOOGLE OAUTH FLOW TEST ===');",
+						"        console.log('1. Copy the URL above');",
+						"        console.log('2. Open it in your browser');",
+						"        console.log('3. Login with your Google account');",
+						"        console.log('4. Google will redirect to FRONTEND callback URL');",
+						"        console.log('5. Frontend handles the callback and calls backend API');",
+						"        console.log('');",
+						"        console.log('Expected FRONTEND callback URL: http://localhost:5173/auth/google/callback');",
 									"    }",
 									"});"
 								]

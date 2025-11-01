@@ -9,8 +9,11 @@ export const GOOGLE_OAUTH_CONFIG = {
 	CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
 	CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
 	
-	// OAuth callback URL
-	CALLBACK_URL: process.env.GOOGLE_OAUTH_CALLBACK_URL || 'http://localhost:8000/auth/google/callback',
+	// Frontend URL (for OAuth redirect)
+	FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+	
+	// OAuth callback URL (redirect ke frontend untuk handle callback)
+	CALLBACK_URL: process.env.GOOGLE_OAUTH_CALLBACK_URL || 'http://localhost:5173/auth/google/callback',
 	
 	// Scopes to request from Google
 	SCOPES: ['profile', 'email'],

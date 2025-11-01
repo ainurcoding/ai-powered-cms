@@ -35,14 +35,15 @@ router.get('/url', requestHandler(googleAuthController.getGoogleAuthUrl));
  * @swagger
  * /auth/google/callback:
  *   get:
- *     summary: Handle Google OAuth callback
+ *     summary: Handle Google OAuth callback (called by frontend)
+ *     description: IMPORTANT - Google redirects to frontend first. Frontend then calls this endpoint with the authorization code to exchange for token.
  *     tags: [Authentication]
  *     parameters:
  *       - in: query
  *         name: code
  *         schema:
  *           type: string
- *         description: Authorization code from Google
+ *         description: Authorization code from Google (sent by frontend)
  *       - in: query
  *         name: error
  *         schema:

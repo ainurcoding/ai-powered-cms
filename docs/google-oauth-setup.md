@@ -2,6 +2,18 @@
 
 Panduan lengkap untuk setup Google OAuth 2.0 untuk fitur registrasi/login dengan Google.
 
+## 🚀 Quick Reference
+
+**Lokasi Authorized Redirect URI:**
+- Google Cloud Console → Hamburger Menu (☰) → **"APIs & Services"** → **"Credentials"**
+- Klik nama OAuth 2.0 Client ID yang sudah ada → Tambahkan URI → **Save**
+
+**Redirect URI yang harus ditambahkan:**
+```
+http://localhost:5173/auth/google/callback  (development)
+https://yourdomain.com/auth/google/callback (production)
+```
+
 ## 1. Setup Google Cloud Console
 
 ### Langkah 1: Buat Project Google Cloud
@@ -18,33 +30,54 @@ Panduan lengkap untuk setup Google OAuth 2.0 untuk fitur registrasi/login dengan
 4. Klik dan enable API tersebut
 
 ### Langkah 3: Create OAuth 2.0 Credentials
-1. Buka "APIs & Services" > "Credentials"
-2. Klik "Create Credentials" > "OAuth 2.0 Client IDs"
-3. Jika belum ada, setup OAuth consent screen terlebih dahulu:
-   - Pilih "External" user type
-   - Isi informasi aplikasi (nama, email, dll)
+
+**🎯 Cara akses "APIs & Services" > "Credentials":**
+
+Dari halaman Google Cloud Console manapun:
+1. Klik icon **hamburger menu (☰)** di pojok kiri atas
+2. Scroll down dan cari section **"APIs & Services"**
+3. Klik **"Credentials"**
+4. Atau gunakan **search bar** di atas, ketik "credentials" lalu pilih "Credentials"
+
+**Buat OAuth Client ID:**
+
+1. Di halaman "Credentials", klik tombol **"+ Create credentials"** (tombol biru di atas)
+2. Pilih **"OAuth client ID"** (bukan "API key" atau yang lain)
+3. Jika muncul popup setup OAuth consent screen terlebih dahulu:
+   - Pilih **"External"** user type
+   - Isi informasi aplikasi (nama, email support, dll)
    - Tambahkan scopes: `profile`, `email`
    - Tambahkan test users jika perlu
+   - Klik "Save and Continue" sampai selesai
 
-4. Buat OAuth 2.0 Client ID:
-   - Application type: "Web application"
-   - Name: "AI CMS Backend"
-   - Authorized redirect URIs:
-     - `http://localhost:8000/auth/google/callback` (development)
-     - `https://yourdomain.com/auth/google/callback` (production)
-
-5. Download JSON credentials atau copy Client ID dan Client Secret
+4. Setelah OAuth consent screen selesai, kembali ke "Credentials"
+5. Klik **"+ Create credentials"** > **"OAuth client ID"** lagi
+6. Isi form:
+   - **Application type**: Pilih **"Web application"**
+   - **Name**: "AI CMS Frontend"
+   - **Authorized redirect URIs**: Klik **"+ ADD URI"** dan tambahkan:
+     ```
+     http://localhost:5173/auth/google/callback
+     ```
+     (Untuk production, tambahkan juga: `https://yourdomain.com/auth/google/callback`)
+7. Klik **"Create"**
+8. **Copy** atau download **Client ID** dan **Client Secret** (Client Secret hanya muncul sekali!)
 
 ## 2. Environment Variables
 
 Tambahkan ke file `.env`:
 
 ```bash
+# Frontend Configuration
+FRONTEND_URL=http://localhost:5173
+
 # Google OAuth Configuration
 GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id_here
 GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret_here
-GOOGLE_OAUTH_CALLBACK_URL=http://localhost:8000/auth/google/callback
+GOOGLE_OAUTH_CALLBACK_URL=http://localhost:5173/auth/google/callback
 ```
+
+**⚠️ IMPORTANT**: Redirect URI sekarang mengarah ke **FRONTEND**, bukan backend!
 
 ## 3. Database Migration
 
@@ -124,12 +157,14 @@ Response:
   "result": {
     "clientId": "Set",
     "clientSecret": "Set",
-    "callbackUrl": "http://localhost:8000/auth/google/callback",
+    "callbackUrl": "http://localhost:5173/auth/google/callback",
     "scopes": ["profile", "email"],
     "message": "Google OAuth configuration is valid"
   }
 }
 ```
+
+**Note**: `callbackUrl` sekarang menunjukkan frontend URL, bukan backend.
 
 ## 5. Frontend Integration
 
@@ -143,11 +178,27 @@ const data = await response.json();
 window.location.href = data.result.authUrl;
 ```
 
-### Handle Callback (jika di frontend)
+### Handle Callback (di frontend)
 ```javascript
-// URL callback akan otomatis di-handle oleh backend
-// Backend akan return user data dan JWT token
-// Frontend tinggal redirect ke dashboard atau simpan token
+// URL callback dihandle di frontend, kemudian panggil backend API
+// Route: /auth/google/callback?code=xxx
+
+// Parse code dari URL
+const urlParams = new URLSearchParams(window.location.search);
+const code = urlParams.get('code');
+
+// Panggil backend untuk exchange code dengan token
+const response = await fetch(`http://localhost:8000/auth/google/callback?code=${code}`);
+const data = await response.json();
+
+// Backend return user data dan JWT token
+const { user, token, isNewUser } = data.result;
+
+// Simpan token ke localStorage
+localStorage.setItem('token', token);
+
+// Redirect ke dashboard
+window.location.href = '/dashboard';
 ```
 
 ## 6. Testing
@@ -163,11 +214,16 @@ curl -X GET http://localhost:8000/auth/google/url
 ```
 
 ### Test 3: Full OAuth Flow
-1. Buka browser dan akses: `http://localhost:8000/auth/google/url`
-2. Copy `authUrl` dari response
-3. Buka URL tersebut di browser
-4. Login dengan Google
-5. Akan redirect ke callback URL dengan user data
+**⚠️ IMPORTANT**: Flow sekarang dimulai dari frontend!
+
+1. Frontend panggil: `GET http://localhost:8000/auth/google/url`
+2. Frontend redirect user ke `authUrl` dari response
+3. User login dengan Google
+4. Google redirect ke: `http://localhost:5173/auth/google/callback?code=xxx`
+5. Frontend handle callback, ambil code
+6. Frontend panggil: `GET http://localhost:8000/auth/google/callback?code=xxx`
+7. Backend return user data dan JWT token
+8. Frontend redirect ke dashboard
 
 ## 7. Security Considerations
 
@@ -186,6 +242,13 @@ curl -X GET http://localhost:8000/auth/google/url
 ### Error: "Redirect URI mismatch"
 - Tambahkan redirect URI yang tepat di Google Console
 - Pastikan URL sama persis (termasuk http/https, port, path)
+- **Cara edit redirect URI yang sudah ada:**
+  1. Buka Google Cloud Console
+  2. Klik hamburger menu (☰) > "APIs & Services" > "Credentials"
+  3. Cari dan **klik nama OAuth 2.0 Client ID** yang sudah ada (misal: "AI CMS Frontend")
+  4. Di section **"Authorized redirect URIs"**, klik **"+ ADD URI"**
+  5. Tambahkan: `http://localhost:5173/auth/google/callback`
+  6. Klik **"SAVE"** di bawah
 
 ### Error: "Access blocked"
 - Pastikan OAuth consent screen sudah dikonfigurasi
