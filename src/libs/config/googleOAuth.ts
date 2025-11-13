@@ -1,7 +1,17 @@
 import dotenv from 'dotenv';
+import { APP_PORT_HTTP } from './index';
 
 // Load environment variables
 dotenv.config();
+
+// Get backend URL
+const getBackendUrl = (): string => {
+	if (process.env.BACKEND_URL) {
+		return process.env.BACKEND_URL;
+	}
+	const port = APP_PORT_HTTP || '8000';
+	return `http://localhost:${port}`;
+};
 
 // Google OAuth Configuration
 export const GOOGLE_OAUTH_CONFIG = {
@@ -9,11 +19,16 @@ export const GOOGLE_OAUTH_CONFIG = {
 	CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
 	CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
 	
-	// Frontend URL (for OAuth redirect)
+	// Frontend URL (for redirect after OAuth success)
 	FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
 	
-	// OAuth callback URL (redirect ke frontend untuk handle callback)
-	CALLBACK_URL: process.env.GOOGLE_OAUTH_CALLBACK_URL || 'http://localhost:5173/auth/google/callback',
+	// Backend URL
+	BACKEND_URL: getBackendUrl(),
+	
+	// OAuth callback URL (Google redirect ke backend untuk Option 1: Backend Redirect)
+	// Untuk Option 1: Backend redirect, Google redirect ke backend
+	// Untuk Option 2: Direct frontend, Google redirect langsung ke frontend (ubah ke FRONTEND_URL)
+	CALLBACK_URL: process.env.GOOGLE_OAUTH_CALLBACK_URL || `${getBackendUrl()}/auth/google/callback`,
 	
 	// Scopes to request from Google
 	SCOPES: ['profile', 'email'],

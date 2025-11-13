@@ -54,12 +54,13 @@ Dari halaman Google Cloud Console manapun:
 5. Klik **"+ Create credentials"** > **"OAuth client ID"** lagi
 6. Isi form:
    - **Application type**: Pilih **"Web application"**
-   - **Name**: "AI CMS Frontend"
+   - **Name**: "AI CMS Backend" (atau nama yang sesuai)
    - **Authorized redirect URIs**: Klik **"+ ADD URI"** dan tambahkan:
      ```
-     http://localhost:5173/auth/google/callback
+     http://localhost:8000/auth/google/callback
      ```
-     (Untuk production, tambahkan juga: `https://yourdomain.com/auth/google/callback`)
+     **⚠️ IMPORTANT**: Untuk Option 1 (Backend Redirect), redirect URI harus mengarah ke **BACKEND**, bukan frontend!
+     (Untuk production, tambahkan juga: `https://api.yourdomain.com/auth/google/callback`)
 7. Klik **"Create"**
 8. **Copy** atau download **Client ID** dan **Client Secret** (Client Secret hanya muncul sekali!)
 
@@ -71,13 +72,22 @@ Tambahkan ke file `.env`:
 # Frontend Configuration
 FRONTEND_URL=http://localhost:5173
 
+# Backend Configuration (optional, default: http://localhost:8000)
+# BACKEND_URL=http://localhost:8000
+
 # Google OAuth Configuration
 GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id_here
 GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret_here
-GOOGLE_OAUTH_CALLBACK_URL=http://localhost:5173/auth/google/callback
+# OAuth callback URL (Google redirect ke backend untuk Option 1: Backend Redirect)
+# Untuk Option 1: Backend redirect (default: http://localhost:8000/auth/google/callback)
+# Untuk Option 2: Direct frontend (ubah ke: http://localhost:5173/auth/google/callback)
+GOOGLE_OAUTH_CALLBACK_URL=http://localhost:8000/auth/google/callback
 ```
 
-**⚠️ IMPORTANT**: Redirect URI sekarang mengarah ke **FRONTEND**, bukan backend!
+**⚠️ IMPORTANT**: 
+- **Option 1 (Backend Redirect)**: Redirect URI mengarah ke **BACKEND** (`http://localhost:8000/auth/google/callback`)
+- **Option 2 (Direct Frontend)**: Redirect URI mengarah ke **FRONTEND** (`http://localhost:5173/auth/google/callback`)
+- Saat ini menggunakan **Option 1**: Google → Backend → Frontend
 
 ## 3. Database Migration
 
@@ -164,14 +174,25 @@ Response:
 }
 ```
 
-**Note**: `callbackUrl` sekarang menunjukkan frontend URL, bukan backend.
+**Note**: `callbackUrl` sekarang menunjukkan backend URL (`http://localhost:8000/auth/google/callback`) untuk Option 1 (Backend Redirect).
 
 ## 5. Frontend Integration
+
+### Option 1: Backend Redirect (Current Implementation)
+
+**Flow:**
+1. Frontend call backend untuk mendapatkan auth URL
+2. Frontend redirect user ke Google OAuth
+3. Google redirect ke backend (`http://localhost:8000/auth/google/callback?code=xxx`)
+4. Backend exchange code dengan token
+5. Backend redirect ke frontend dengan token (`http://localhost:5173/auth/google/callback?token=xxx`)
+6. Frontend handle callback, ambil token dari URL
+7. Frontend save token, redirect ke dashboard
 
 ### Redirect ke Google OAuth
 ```javascript
 // Get auth URL dari backend
-const response = await fetch('/auth/google/url');
+const response = await fetch('http://localhost:8000/auth/google/url');
 const data = await response.json();
 
 // Redirect ke Google OAuth
@@ -180,19 +201,27 @@ window.location.href = data.result.authUrl;
 
 ### Handle Callback (di frontend)
 ```javascript
-// URL callback dihandle di frontend, kemudian panggil backend API
-// Route: /auth/google/callback?code=xxx
+// Route: /auth/google/callback?token=xxx
+// Backend sudah redirect ke frontend dengan token di URL
 
-// Parse code dari URL
+// Parse token dari URL
 const urlParams = new URLSearchParams(window.location.search);
-const code = urlParams.get('code');
+const token = urlParams.get('token');
+const error = urlParams.get('error');
 
-// Panggil backend untuk exchange code dengan token
-const response = await fetch(`http://localhost:8000/auth/google/callback?code=${code}`);
-const data = await response.json();
+// Check for errors
+if (error) {
+  console.error('Google OAuth error:', error);
+  // Redirect ke login page dengan error message
+  window.location.href = `/login?error=${encodeURIComponent(error)}`;
+  return;
+}
 
-// Backend return user data dan JWT token
-const { user, token, isNewUser } = data.result;
+if (!token) {
+  console.error('Token not found in URL');
+  window.location.href = '/login?error=Token not found';
+  return;
+}
 
 // Simpan token ke localStorage
 localStorage.setItem('token', token);
@@ -200,6 +229,10 @@ localStorage.setItem('token', token);
 // Redirect ke dashboard
 window.location.href = '/dashboard';
 ```
+
+### Option 2: Direct Frontend (Alternative)
+
+Jika ingin menggunakan Option 2 (Direct Frontend), ubah `GOOGLE_OAUTH_CALLBACK_URL` ke frontend URL dan update Google Cloud Console.
 
 ## 6. Testing
 
@@ -213,17 +246,19 @@ curl -X GET http://localhost:8000/auth/google/test-config
 curl -X GET http://localhost:8000/auth/google/url
 ```
 
-### Test 3: Full OAuth Flow
-**⚠️ IMPORTANT**: Flow sekarang dimulai dari frontend!
+### Test 3: Full OAuth Flow (Option 1: Backend Redirect)
+**⚠️ IMPORTANT**: Flow menggunakan Backend Redirect!
 
 1. Frontend panggil: `GET http://localhost:8000/auth/google/url`
 2. Frontend redirect user ke `authUrl` dari response
 3. User login dengan Google
-4. Google redirect ke: `http://localhost:5173/auth/google/callback?code=xxx`
-5. Frontend handle callback, ambil code
-6. Frontend panggil: `GET http://localhost:8000/auth/google/callback?code=xxx`
-7. Backend return user data dan JWT token
-8. Frontend redirect ke dashboard
+4. Google redirect ke: `http://localhost:8000/auth/google/callback?code=xxx` (BACKEND)
+5. Backend exchange code dengan token
+6. Backend redirect ke: `http://localhost:5173/auth/google/callback?token=xxx` (FRONTEND)
+7. Frontend handle callback, ambil token dari URL
+8. Frontend save token, redirect ke dashboard
+
+**User tidak akan melihat JSON response di browser!**
 
 ## 7. Security Considerations
 
@@ -242,12 +277,13 @@ curl -X GET http://localhost:8000/auth/google/url
 ### Error: "Redirect URI mismatch"
 - Tambahkan redirect URI yang tepat di Google Console
 - Pastikan URL sama persis (termasuk http/https, port, path)
+- **Untuk Option 1 (Backend Redirect)**: Redirect URI harus mengarah ke **BACKEND** (`http://localhost:8000/auth/google/callback`)
 - **Cara edit redirect URI yang sudah ada:**
   1. Buka Google Cloud Console
   2. Klik hamburger menu (☰) > "APIs & Services" > "Credentials"
-  3. Cari dan **klik nama OAuth 2.0 Client ID** yang sudah ada (misal: "AI CMS Frontend")
+  3. Cari dan **klik nama OAuth 2.0 Client ID** yang sudah ada (misal: "AI CMS Backend")
   4. Di section **"Authorized redirect URIs"**, klik **"+ ADD URI"**
-  5. Tambahkan: `http://localhost:5173/auth/google/callback`
+  5. Tambahkan: `http://localhost:8000/auth/google/callback` (BACKEND)
   6. Klik **"SAVE"** di bawah
 
 ### Error: "Access blocked"

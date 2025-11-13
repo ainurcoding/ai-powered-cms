@@ -142,9 +142,13 @@ export class GoogleOAuthService {
 	 * Get Google OAuth authorization URL
 	 */
 	getAuthUrl(): string {
+		// Trim whitespace from credentials (sometimes .env files have trailing spaces)
+		const clientId = GOOGLE_OAUTH_CONFIG.CLIENT_ID.trim();
+		const redirectUri = GOOGLE_OAUTH_CONFIG.CALLBACK_URL.trim();
+		
 		const params = new URLSearchParams({
-			client_id: GOOGLE_OAUTH_CONFIG.CLIENT_ID,
-			redirect_uri: GOOGLE_OAUTH_CONFIG.CALLBACK_URL,
+			client_id: clientId,
+			redirect_uri: redirectUri,
 			scope: GOOGLE_OAUTH_CONFIG.SCOPES.join(' '),
 			response_type: 'code',
 			access_type: 'offline',

@@ -35,15 +35,24 @@ router.get('/url', requestHandler(googleAuthController.getGoogleAuthUrl));
  * @swagger
  * /auth/google/callback:
  *   get:
- *     summary: Handle Google OAuth callback (called by frontend)
- *     description: IMPORTANT - Google redirects to frontend first. Frontend then calls this endpoint with the authorization code to exchange for token.
+ *     summary: Handle Google OAuth callback (redirect to frontend or exchange token)
+ *     description: |
+ *       IMPORTANT - This endpoint handles 2 scenarios:
+ *       1. Browser redirect from Google: Redirects to frontend with code (302 redirect)
+ *       2. API call from frontend: Exchanges code with token and returns JSON (200 response)
+ *       
+ *       Flow:
+ *       1. Google redirects to: http://localhost:8000/auth/google/callback?code=xxx
+ *       2. Backend redirects to: http://localhost:5173/auth/google/callback?code=xxx
+ *       3. Frontend calls: GET /auth/google/callback?code=xxx (with Accept: application/json header)
+ *       4. Backend returns: { user, token, isNewUser }
  *     tags: [Authentication]
  *     parameters:
  *       - in: query
  *         name: code
  *         schema:
  *           type: string
- *         description: Authorization code from Google (sent by frontend)
+ *         description: Authorization code from Google
  *       - in: query
  *         name: error
  *         schema:
@@ -54,9 +63,27 @@ router.get('/url', requestHandler(googleAuthController.getGoogleAuthUrl));
  *         schema:
  *           type: string
  *         description: Error description if OAuth failed
+ *       - in: query
+ *         name: state
+ *         schema:
+ *           type: string
+ *         description: State parameter from Google (optional)
+ *       - in: header
+ *         name: Accept
+ *         schema:
+ *           type: string
+ *         description: Set to "application/json" for API call, omit for browser redirect
  *     responses:
+ *       302:
+ *         description: Redirect to frontend with code (browser redirect from Google)
+ *         headers:
+ *           Location:
+ *             description: Frontend callback URL with code
+ *             schema:
+ *               type: string
+ *             example: http://localhost:5173/auth/google/callback?code=xxx
  *       200:
- *         description: OAuth callback processed successfully
+ *         description: Token exchange successful (API call from frontend)
  *         content:
  *           application/json:
  *             schema:
@@ -91,7 +118,7 @@ router.get('/url', requestHandler(googleAuthController.getGoogleAuthUrl));
  *                     message:
  *                       type: string
  *       400:
- *         description: OAuth callback failed
+ *         description: OAuth callback failed or invalid code
  */
 router.get('/callback', requestHandler(googleAuthController.handleGoogleCallback));
 
