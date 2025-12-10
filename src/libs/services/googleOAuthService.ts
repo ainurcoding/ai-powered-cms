@@ -1,5 +1,6 @@
 import { UserRepository } from '@repositories/userRepository';
 import { GOOGLE_OAUTH_CONFIG } from '@libs/config/googleOAuth';
+import { APP_SECRET_KEY } from '@libs/config';
 import jwt from 'jsonwebtoken';
 import logger from '@libs/core/logger';
 
@@ -109,16 +110,19 @@ export class GoogleOAuthService {
 
 	/**
 	 * Generate JWT token for user
+	 * Uses APP_SECRET_KEY to ensure consistency with authentication middleware
+	 * Payload structure matches login endpoint for consistency
 	 */
 	private generateJWTToken(user: any): string {
 		const payload = {
 			id: user.id,
+			name: user.name,
 			username: user.username,
 			email: user.email,
 			role: user.role
 		};
 
-		return jwt.sign(payload, GOOGLE_OAUTH_CONFIG.JWT_SECRET, {
+		return jwt.sign(payload, APP_SECRET_KEY, {
 			expiresIn: GOOGLE_OAUTH_CONFIG.JWT_EXPIRES_IN
 		});
 	}
