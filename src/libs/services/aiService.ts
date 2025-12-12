@@ -1,5 +1,6 @@
-import { getTextModel, validateAIConfig } from '@/libs/config/ai';
+import { getTextModel, getTextModelForContent, validateAIConfig, AI_CONFIG } from '@/libs/config/ai';
 import logger from '@/libs/core/logger';
+import { QuotaExceededException, ServiceUnavailableException } from '@/libs/core/exceptions';
 
 // AI Service Interfaces
 export interface IContentGenerationRequest {
@@ -17,10 +18,16 @@ export interface IContentGenerationResponse {
 	content: string;
 	excerpt: string;
 	metaDescription: string;
+	metaTitle?: string; // SEO meta title (optional, default: same as title)
+	metaKeywords?: string; // SEO meta keywords (optional)
 	suggestedTags: string[];
 	suggestedCategory: string;
 	seoScore: number;
 	estimatedReadTime: number;
+	// Provider information
+	provider?: 'gemini' | 'zenmux';
+	apiKey?: string; // Masked API key (only show last 4 characters)
+	model?: string;
 }
 
 export interface ISEOOptimizationRequest {
@@ -85,20 +92,30 @@ export interface IContentSuggestionsResponse {
 }
 
 /**
- * AI Content Generation Service
- */
+	 * AI Content Generation Service
+	 */
 export class AIService {
 	private static instance: AIService;
-	
+		
 	private constructor() {
 		// Don't validate config in constructor - do it lazily
 	}
-	
+		
 	public static getInstance(): AIService {
 		if (!AIService.instance) {
 			AIService.instance = new AIService();
 		}
 		return AIService.instance;
+	}
+
+	/**
+		 * Mask API key - only show last 4 characters
+		 */
+	private maskApiKey(apiKey: string): string {
+		if (!apiKey || apiKey.length <= 4) {
+			return '****';
+		}
+		return '****' + apiKey.slice(-4);
 	}
 
 	/**
@@ -110,11 +127,14 @@ export class AIService {
 
 	/**
 	 * Generate content using AI
+	 * Primary: Gemini API
+	 * Fallback: ZenMux API (if Gemini fails)
 	 */
 	async generateContent(request: IContentGenerationRequest): Promise<IContentGenerationResponse> {
 		try {
 			this.validateConfig();
-			const model = getTextModel();
+			// Use model with higher token limit for content generation
+			const model = getTextModelForContent();
 			
 			// Translate topic and keywords if generating English content
 			let finalTopic = request.topic;
@@ -128,22 +148,31 @@ export class AIService {
 			
 			const prompt = this.buildContentPrompt(request);
 			
-			logger.info('Generating content with AI...', { 
+			logger.info('Generating content with Gemini AI...', { 
 				originalTopic: request.topic,
 				translatedTopic: finalTopic,
 				originalKeywords: request.keywords,
 				translatedKeywords: finalKeywords,
 				contentType: request.contentType,
-				language: request.language 
+				language: request.language,
+				maxTokens: 16384 // Log the token limit being used
 			});
 			
 			const result = await model.generateContent(prompt);
 			const response = await result.response;
 			const text = response.text();
+			const finishReason = response.candidates?.[0]?.finishReason;
 			
-			logger.info('AI content generated successfully', { 
-				contentLength: text.length 
+			logger.info('Gemini AI content generated successfully', { 
+				contentLength: text.length,
+				finishReason: finishReason || 'unknown'
 			});
+			
+			// Check if response was truncated due to token limit
+			if (finishReason === 'MAX_TOKENS') {
+				logger.warn('AI response was truncated due to token limit. Consider increasing maxOutputTokens.');
+				throw new Error('AI response was truncated. The content is too long. Please try with shorter content length or increase token limit.');
+			}
 			
 			// Create modified request with translated topic/keywords for response
 			const modifiedRequest = {
@@ -152,26 +181,87 @@ export class AIService {
 				keywords: finalKeywords
 			};
 			
-			return this.parseContentResponse(text, modifiedRequest);
-		} catch (error) {
-			logger.error('AI Content Generation failed:', error);
+			// Add provider info for Gemini
+			const providerInfo = {
+				provider: 'gemini' as const,
+				apiKey: AI_CONFIG.GEMINI_API_KEY,
+				model: AI_CONFIG.GEMINI_MODEL
+			};
 			
-			// Check if it's a network/API error
+			return this.parseContentResponse(text, modifiedRequest, providerInfo);
+		} catch (error) {
+			logger.error('Gemini AI Content Generation failed:', error);
+			
+			// Check if it's a network/API error that should NOT fallback (will fail on ZenMux too)
 			if (error instanceof Error) {
 				if (error.message.includes('fetch failed') || error.message.includes('network')) {
-					throw new Error('AI service is currently unavailable. Please check your internet connection and API configuration.');
+					throw new ServiceUnavailableException('AI service is currently unavailable. Please check your internet connection and API configuration.');
 				}
 				if (error.message.includes('API key') || error.message.includes('authentication')) {
-					throw new Error('AI API key is invalid or missing. Please check your GEMINI_API_KEY configuration.');
-				}
-				if (error.message.includes('quota') || error.message.includes('rate limit')) {
-					throw new Error('AI service quota exceeded. Please try again later.');
+					throw new ServiceUnavailableException('AI API key is invalid or missing. Please check your GEMINI_API_KEY configuration.');
 				}
 			}
 			
-			// Fallback to mock content for development
-			logger.warn('Using fallback content generation due to AI service error');
-			return this.generateFallbackContent(request);
+			// Try fallback to ZenMux if Gemini fails
+			// This includes: quota/rate limit, 503/overloaded, and other errors
+			logger.warn('Gemini API failed, attempting fallback to ZenMux...', {
+				error: error instanceof Error ? error.message : 'Unknown error',
+				errorType: error instanceof Error && (
+					error.message.includes('quota') || error.message.includes('rate limit') || error.message.includes('429') ? 'quota' :
+						error.message.includes('503') || error.message.includes('overloaded') ? 'overloaded' :
+							'other'
+				)
+			});
+			
+			try {
+				return await this.generateContentWithZenmux(request);
+			} catch (zenmuxError) {
+				logger.error('ZenMux fallback also failed:', zenmuxError);
+				
+				// If ZenMux also fails, provide helpful error message based on original error
+				if (error instanceof Error) {
+					if (error.message.includes('quota') || error.message.includes('rate limit') || error.message.includes('429') || error.message.includes('Too Many Requests')) {
+						// Extract retry delay from error message
+						let retryDelaySeconds = 15; // default
+						const retryDelayMatch = error.message.match(/retry in ([\d.]+)s/i) || error.message.match(/retryDelay["']?\s*:\s*["']?(\d+)/i);
+						if (retryDelayMatch) {
+							retryDelaySeconds = parseFloat(retryDelayMatch[1]);
+						}
+						
+						// Format waktu retry yang user-friendly
+						const formatRetryTime = (seconds: number): string => {
+							if (seconds < 60) {
+								return `${Math.ceil(seconds)} detik`;
+							} else if (seconds < 3600) {
+								const minutes = Math.ceil(seconds / 60);
+								return `${minutes} menit`;
+							} else {
+								const hours = Math.ceil(seconds / 3600);
+								return `${hours} jam`;
+							}
+						};
+						
+						const retryTime = formatRetryTime(retryDelaySeconds);
+						
+						if (zenmuxError instanceof Error && zenmuxError.message.includes('credit')) {
+							throw new ServiceUnavailableException(`Gemini quota habis dan ZenMux memerlukan credit. Silakan: 1) Top up credit di ZenMux (https://zenmux.ai), atau 2) Tunggu ${retryTime} untuk Gemini API.`);
+						}
+						throw new QuotaExceededException(`Quota/rate limit tercapai di Gemini. Limit free tier Gemini API: 20 requests per hari. Fallback ke ZenMux juga gagal. Silakan coba lagi dalam ${retryTime} (atau tunggu hingga quota reset). Untuk quota lebih besar, pertimbangkan upgrade ke paid plan.`);
+					}
+					if (error.message.includes('503') || error.message.includes('Service Unavailable') || error.message.includes('overloaded')) {
+						if (zenmuxError instanceof Error && zenmuxError.message.includes('credit')) {
+							throw new ServiceUnavailableException('Gemini sedang overloaded dan ZenMux memerlukan credit. Silakan: 1) Top up credit di ZenMux (https://zenmux.ai), atau 2) Tunggu beberapa saat untuk Gemini API kembali normal.');
+						}
+						throw new ServiceUnavailableException(`Gemini sedang overloaded dan fallback ke ZenMux juga gagal. Silakan coba lagi dalam beberapa saat. Jika masalah berlanjut, coba lagi nanti. ZenMux error: ${zenmuxError instanceof Error ? zenmuxError.message : 'Unknown error'}`);
+					}
+				}
+				
+				// Generic fallback error
+				if (zenmuxError instanceof Error && zenmuxError.message.includes('credit')) {
+					throw new ServiceUnavailableException(`Gemini API gagal dan fallback ke ZenMux juga gagal karena memerlukan credit. Silakan: 1) Top up credit di ZenMux (https://zenmux.ai), atau 2) Tunggu hingga Gemini API kembali normal. Error Gemini: ${error instanceof Error ? error.message : 'Unknown error'}`);
+				}
+				throw new ServiceUnavailableException(`Failed to generate content with both Gemini and ZenMux. Gemini error: ${error instanceof Error ? error.message : 'Unknown error'}. ZenMux error: ${zenmuxError instanceof Error ? zenmuxError.message : 'Unknown error'}`);
+			}
 		}
 	}
 
@@ -442,59 +532,6 @@ export class AIService {
 		return improvements;
 	}
 
-	/**
-	 * Generate fallback content when AI service is unavailable
-	 */
-	private generateFallbackContent(request: IContentGenerationRequest): IContentGenerationResponse {
-		const { title, topic, keywords, contentType, language } = request;
-		
-		// Translate topic and keywords if generating English content
-		let finalTopic = topic;
-		let finalKeywords = keywords || [];
-		
-		if (language === 'en') {
-			const translation = this.translateToEnglish(topic, keywords || []);
-			finalTopic = translation.translatedTopic;
-			finalKeywords = translation.translatedKeywords;
-		}
-		
-		const contentTitle = title || finalTopic;
-		const isEnglish = language === 'en';
-		
-		// Generate basic content based on content type
-		let content = '';
-		
-		switch (contentType) {
-			case 'tutorial':
-				content = this.generateTutorialContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
-				break;
-			case 'blog':
-				content = this.generateBlogContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
-				break;
-			case 'article':
-				content = this.generateArticleContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
-				break;
-			case 'news':
-				content = this.generateNewsContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
-				break;
-			case 'review':
-				content = this.generateReviewContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
-				break;
-			default:
-				content = this.generateDefaultContent(contentTitle, finalTopic, finalKeywords, isEnglish ? 'English' : 'Indonesian');
-		}
-		
-		return {
-			title: contentTitle,
-			content: content,
-			excerpt: this.generateExcerpt(content),
-			metaDescription: this.generateMetaDescription(content),
-			suggestedTags: this.extractTags(content),
-			suggestedCategory: this.getCategoryFromTopic(finalTopic),
-			seoScore: 75,
-			estimatedReadTime: this.calculateReadTime(content)
-		};
-	}
 
 	/**
 	 * Translate Indonesian topic/keywords to English for better AI understanding
@@ -728,44 +765,59 @@ export class AIService {
 	 * Build content generation prompt with enhanced AI instructions
 	 */
 	private buildContentPrompt(request: IContentGenerationRequest): string {
-		const { title, topic, keywords, contentType, tone, length, language } = request;
+		const { topic, keywords, contentType, tone, length, language } = request;
 		
 		const lang = language === 'id' ? 'Indonesian' : 'English';
 		const lengthWords = length === 'short' ? '300-500' : length === 'medium' ? '800-1200' : '1500-2500';
 		
-		// Enhanced prompt for better translation handling
-		const translationInstruction = language === 'en' ? 
-			'IMPORTANT: Write the article in English. The topic and keywords have been pre-translated for better understanding. Focus on creating engaging, informative content that provides real value to readers.' : 
-			`Write the article in ${lang}.`;
-		
-		return `
-${translationInstruction}
+		// Build content type specific instructions
+		const contentTypeInstructions: Record<string, string> = {
+			blog: 'Tulis artikel blog yang engaging, informatif, dan mudah dibaca. Gunakan gaya penulisan yang natural dan conversational.',
+			article: 'Tulis artikel yang lebih formal dan informatif dengan struktur yang jelas. Fokus pada informasi yang akurat dan detail.',
+			tutorial: 'Tulis tutorial step-by-step yang jelas dan mudah diikuti. Sertakan contoh praktis dan penjelasan yang detail.',
+			news: 'Tulis berita dengan format jurnalistik yang objektif. Sertakan fakta, konteks, dan informasi terkini.',
+			review: 'Tulis review yang komprehensif dengan analisis mendalam. Sertakan pro-kontra, perbandingan, dan rekomendasi.'
+		};
 
-Write a detailed ${contentType} article in ${lang} about "${title || topic}".
+		const contentTypeInstruction = contentTypeInstructions[contentType] || contentTypeInstructions['blog'];
 
-Requirements:
-- Length: ${lengthWords} words
-- Tone: ${tone}
-- Language: ${lang}
-${keywords && keywords.length > 0 ? `- Include keywords: ${keywords.join(', ')}` : ''}
+		return `Kamu adalah penulis konten profesional. Buat ${contentType} yang lengkap dan menarik tentang topik: "${topic}"
 
-Write a comprehensive article with:
-- Introduction
-- Main content with examples
-- Practical tips
-- Conclusion
+${contentTypeInstruction}
 
-Return ONLY this JSON (no other text):
+Parameter:
+- Bahasa: ${lang}
+- Gaya penulisan: ${tone}
+- Panjang: ${lengthWords} kata
+${keywords && keywords.length > 0 ? `- Kata kunci yang harus disertakan: ${keywords.join(', ')}` : ''}
+
+Instruksi:
+- Tulis konten yang natural, kreatif, dan informatif
+- Gunakan HTML tags untuk formatting (<h2>, <h3>, <p>, <ul>, <ol>, <table>)
+- Pastikan konten LENGKAP mencapai minimal ${lengthWords} kata
+- Berikan informasi spesifik, relevan, dan bermanfaat
+- Biarkan kreativitasmu mengalir - jangan gunakan template generic
+
+Kembalikan HANYA JSON murni yang LENGKAP (tanpa markdown code block, tanpa teks lain, PASTIKAN JSON LENGKAP dan tidak terpotong):
 {
-  "title": "Article title",
-  "content": "Full article content with HTML tags like <h2>, <h3>, <p>",
-  "excerpt": "150-word summary",
-  "metaDescription": "SEO description (150-160 chars)",
+  "title": "Judul yang menarik dan relevan dengan topik",
+  "content": "Konten artikel lengkap dengan HTML tags. Pastikan konten mencapai minimal ${lengthWords} kata dan tidak terpotong.",
+  "excerpt": "Ringkasan singkat maksimal 500 karakter (sekitar 80-100 kata) yang menarik dan informatif",
+  "metaDescription": "Deskripsi SEO 150-160 karakter",
+  "metaTitle": "Judul SEO yang dioptimalkan untuk search engine (50-60 karakter, bisa berbeda dari title untuk SEO yang lebih baik)",
+  "metaKeywords": "Kata kunci SEO, dipisahkan dengan koma, relevan dengan konten",
   "suggestedTags": ["tag1", "tag2", "tag3"],
-  "suggestedCategory": "category",
-  "seoScore": 85,
-  "estimatedReadTime": 5
+  "suggestedCategory": "kategori yang relevan",
+  "seoScore": [HITUNG dan berikan angka SEO score 0-100 berdasarkan analisis: panjang konten, penggunaan keywords, struktur HTML (headings), meta description, relevansi konten, dll. Berikan nilai yang akurat dan realistis],
+  "estimatedReadTime": [HITUNG dan berikan angka estimated read time dalam menit berdasarkan panjang konten (asumsi 200 kata per menit)]
 }
+
+PENTING:
+- seoScore dan estimatedReadTime harus berupa ANGKA, bukan string atau teks
+- JSON HARUS LENGKAP dengan semua field dan closing brace }
+- Jangan potong JSON di tengah-tengah - pastikan response lengkap sampai akhir
+- Content field HARUS berisi konten LENGKAP minimal ${lengthWords} kata, jangan terpotong
+- Pastikan semua field JSON terisi lengkap sebelum menutup dengan }
 		`.trim();
 	}
 
@@ -823,61 +875,314 @@ Focus on relevant, specific tags that improve content discoverability.
 	/**
 	 * Parse content generation response
 	 */
-	private parseContentResponse(text: string, request: IContentGenerationRequest): IContentGenerationResponse {
+	private parseContentResponse(text: string, request: IContentGenerationRequest, providerInfo?: { provider: 'gemini' | 'zenmux'; apiKey?: string; model?: string }): IContentGenerationResponse {
 		try {
-			// Try to extract JSON from response (handle both plain JSON and markdown code blocks)
-			let jsonMatch = text.match(/\{[\s\S]*\}/);
+			// Clean the text first - remove markdown code blocks if present
+			let cleanText = text.trim();
 			
-			// If no JSON found, try to extract from markdown code blocks
-			if (!jsonMatch) {
-				const codeBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-				if (codeBlockMatch) {
-					jsonMatch = [codeBlockMatch[1]];
+			logger.info('Parsing AI response', {
+				textLength: text.length,
+				hasCodeBlocks: cleanText.includes('```'),
+				firstChars: text.substring(0, 200) // Log first 200 chars to see what AI returned
+			});
+			
+			// Remove markdown code blocks (```json ... ``` or ``` ... ```)
+			if (cleanText.includes('```')) {
+				// Try to extract JSON from markdown code block - use non-greedy but match complete JSON
+				const codeBlockMatch = cleanText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+				if (codeBlockMatch && codeBlockMatch[1]) {
+					cleanText = codeBlockMatch[1].trim();
+					logger.info('Extracted JSON from markdown code block');
+				} else {
+					// Remove code block markers but keep content
+					cleanText = cleanText.replace(/```(?:json)?\s*/g, '').replace(/```\s*/g, '').trim();
+					logger.info('Removed code block markers');
 				}
 			}
 			
-			if (jsonMatch) {
-				// If JSON found, parse it
-				const parsed = JSON.parse(jsonMatch[0]);
-				return {
-					title: parsed.title || request.title || request.topic || 'Generated Title',
-					content: parsed.content || text,
-					excerpt: parsed.excerpt || this.generateExcerpt(text),
-					metaDescription: parsed.metaDescription || this.generateMetaDescription(text),
-					suggestedTags: parsed.suggestedTags || this.extractTags(text),
-					suggestedCategory: parsed.suggestedCategory || 'General',
-					seoScore: parsed.seoScore || 75,
-					estimatedReadTime: parsed.estimatedReadTime || this.calculateReadTime(text)
-				};
-			} else {
-				// If no JSON found, create a comprehensive response from the topic
-				const title = request.title || request.topic || 'Generated Title';
-				const content = this.generateComprehensiveContent(request, title);
-
-				return {
-					title: title,
-					content: content,
-					excerpt: this.generateExcerpt(content),
-					metaDescription: this.generateMetaDescription(content),
-					suggestedTags: this.extractTags(content),
-					suggestedCategory: this.getCategoryFromTopic(request.topic || title),
-					seoScore: 75,
-					estimatedReadTime: this.calculateReadTime(content)
-				};
+			// Try to find complete JSON object - need to match nested braces properly
+			let jsonText = '';
+			let braceCount = 0;
+			let startIndex = -1;
+			
+			for (let i = 0; i < cleanText.length; i++) {
+				if (cleanText[i] === '{') {
+					if (startIndex === -1) startIndex = i;
+					braceCount++;
+				} else if (cleanText[i] === '}') {
+					braceCount--;
+					if (braceCount === 0 && startIndex !== -1) {
+						jsonText = cleanText.substring(startIndex, i + 1);
+						break;
+					}
+				}
 			}
+			
+			logger.info('JSON extraction result', {
+				foundJson: !!jsonText,
+				jsonLength: jsonText.length,
+				braceCount
+			});
+			
+			// If brace matching failed but we have opening brace, try to fix incomplete JSON
+			if (!jsonText && braceCount > 0 && startIndex !== -1) {
+				// JSON might be incomplete - try to extract what we have and add closing brace
+				const partialJson = cleanText.substring(startIndex);
+				logger.warn('Incomplete JSON detected, attempting to fix', {
+					partialJson: partialJson.substring(0, 100),
+					braceCount
+				});
+				
+				// Try to add missing closing braces
+				let fixedJson = partialJson;
+				for (let i = 0; i < braceCount; i++) {
+					fixedJson += '}';
+				}
+				
+				// Try to parse the fixed JSON
+				try {
+					const testParsed = JSON.parse(fixedJson);
+					if (testParsed.content) {
+						jsonText = fixedJson;
+						logger.info('Successfully fixed incomplete JSON');
+					}
+				} catch (e) {
+					logger.warn('Failed to fix incomplete JSON');
+				}
+			}
+			
+			// If brace matching failed, try regex as fallback
+			if (!jsonText) {
+				const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+				if (jsonMatch) {
+					jsonText = jsonMatch[0];
+					logger.info('Used regex fallback to extract JSON');
+				}
+			}
+			
+			// If still no JSON found, try original text
+			if (!jsonText) {
+				const jsonMatch = text.match(/\{[\s\S]*\}/);
+				if (jsonMatch) {
+					jsonText = jsonMatch[0];
+					logger.info('Used original text to extract JSON');
+				}
+			}
+			
+			if (jsonText) {
+				try {
+					// Parse the JSON - handle escaped strings properly
+					const parsed = JSON.parse(jsonText);
+					
+					// Use ALL fields from AI response - especially title must come from AI
+					if (parsed.content && typeof parsed.content === 'string' && parsed.content.length > 50) {
+						// Ensure excerpt doesn't exceed 500 characters
+						let excerpt = parsed.excerpt || this.generateExcerpt(parsed.content);
+						if (excerpt.length > 500) {
+							excerpt = excerpt.substring(0, 497) + '...';
+						}
+				
+						return {
+							title: parsed.title || request.topic || 'Generated Title', // Title from AI, not from request
+							content: parsed.content, // Full content from AI
+							excerpt: excerpt,
+							metaDescription: parsed.metaDescription || this.generateMetaDescription(parsed.content),
+							metaTitle: parsed.metaTitle || parsed.title || request.topic, // Meta title (default: same as title)
+							metaKeywords: parsed.metaKeywords || undefined, // Meta keywords (optional)
+							suggestedTags: parsed.suggestedTags || this.extractTags(parsed.content),
+							suggestedCategory: parsed.suggestedCategory || this.getCategoryFromTopic(request.topic || parsed.title),
+							seoScore: parsed.seoScore !== undefined ? parsed.seoScore : 75, // Use AI's SEO score
+							estimatedReadTime: parsed.estimatedReadTime !== undefined ? parsed.estimatedReadTime : this.calculateReadTime(parsed.content),
+							provider: providerInfo?.provider,
+							apiKey: providerInfo?.apiKey ? this.maskApiKey(providerInfo.apiKey) : undefined,
+							model: providerInfo?.model
+						};
+					} else {
+						logger.warn('Parsed JSON but content is missing or too short');
+					}
+				} catch (parseError: any) {
+					logger.warn('Failed to parse JSON, trying alternative parsing:', parseError.message);
+					
+					// Better extraction method for long JSON strings
+					const extractJsonField = (fieldName: string, jsonStr: string): string | null => {
+						// Find the field position
+						const fieldPattern = new RegExp(`"${fieldName}"\\s*:\\s*"`, 's');
+						const fieldMatch = jsonStr.match(fieldPattern);
+						
+						if (!fieldMatch || !fieldMatch.index) {
+							return null;
+						}
+						
+						// Start from after the field name and opening quote
+						let startPos = fieldMatch.index + fieldMatch[0].length;
+						let result = '';
+						let i = startPos;
+						let escapeNext = false;
+						
+						// Parse character by character to handle escaped quotes properly
+						while (i < jsonStr.length) {
+							const char = jsonStr[i];
+							
+							if (escapeNext) {
+								result += char;
+								escapeNext = false;
+								i++;
+								continue;
+							}
+							
+							if (char === '\\') {
+								escapeNext = true;
+								result += char;
+								i++;
+								continue;
+							}
+							
+							if (char === '"') {
+								// Found closing quote, check if it's the end of the field value
+								// Look ahead to see if there's a comma or closing brace
+								let j = i + 1;
+								while (j < jsonStr.length && (jsonStr[j] === ' ' || jsonStr[j] === '\n' || jsonStr[j] === '\r' || jsonStr[j] === '\t')) {
+									j++;
+								}
+								
+								if (j >= jsonStr.length || jsonStr[j] === ',' || jsonStr[j] === '}') {
+									// This is the end of the field value
+									break;
+								}
+							}
+							
+							result += char;
+							i++;
+						}
+						
+						if (result) {
+							// Unescape the string
+							return result
+								.replace(/\\"/g, '"')
+								.replace(/\\n/g, '\n')
+								.replace(/\\r/g, '\r')
+								.replace(/\\t/g, '\t')
+								.replace(/\\\\/g, '\\');
+						}
+						
+						return null;
+					};
+					
+					const extractedContent = extractJsonField('content', jsonText);
+					const extractedTitle = extractJsonField('title', jsonText);
+					const extractedExcerpt = extractJsonField('excerpt', jsonText);
+					const extractedMetaDesc = extractJsonField('metaDescription', jsonText);
+					const extractedMetaTitle = extractJsonField('metaTitle', jsonText);
+					const extractedMetaKeywords = extractJsonField('metaKeywords', jsonText);
+					
+					// Try to extract seoScore (number field, not string)
+					let extractedSeoScore: number | undefined;
+					const seoScoreMatch = jsonText.match(/"seoScore"\s*:\s*(\d+)/);
+					if (seoScoreMatch && seoScoreMatch[1]) {
+						extractedSeoScore = parseInt(seoScoreMatch[1], 10);
+					}
+					
+					// Try to extract estimatedReadTime (number field, not string)
+					let extractedReadTime: number | undefined;
+					const readTimeMatch = jsonText.match(/"estimatedReadTime"\s*:\s*(\d+)/);
+					if (readTimeMatch && readTimeMatch[1]) {
+						extractedReadTime = parseInt(readTimeMatch[1], 10);
+					}
+					
+					if (extractedContent && extractedContent.length > 50) {
+						// Try to extract tags array
+						const tagsMatch = jsonText.match(/"suggestedTags"\s*:\s*\[(.*?)\]/s);
+						let extractedTags: string[] = [];
+						if (tagsMatch && tagsMatch[1]) {
+							const tagMatches = tagsMatch[1].match(/"([^"]+)"/g);
+							if (tagMatches) {
+								extractedTags = tagMatches.map(tag => tag.replace(/"/g, ''));
+							}
+						}
+						
+						logger.info('Successfully extracted content from JSON', {
+							contentLength: extractedContent.length,
+							title: extractedTitle,
+							seoScore: extractedSeoScore
+						});
+
+						// Ensure excerpt doesn't exceed 500 characters
+						let excerpt = extractedExcerpt || this.generateExcerpt(extractedContent);
+						if (excerpt.length > 500) {
+							excerpt = excerpt.substring(0, 497) + '...';
+						}
+				
+						return {
+							title: extractedTitle || request.topic || 'Generated Title',
+							content: extractedContent,
+							excerpt: excerpt,
+							metaDescription: extractedMetaDesc || this.generateMetaDescription(extractedContent),
+							metaTitle: extractedMetaTitle || extractedTitle || request.topic, // Meta title (default: same as title)
+							metaKeywords: extractedMetaKeywords || undefined, // Meta keywords (optional)
+							suggestedTags: extractedTags.length > 0 ? extractedTags : this.extractTags(extractedContent),
+							suggestedCategory: this.getCategoryFromTopic(request.topic || extractedTitle || ''),
+							seoScore: extractedSeoScore !== undefined ? extractedSeoScore : 75, // Use AI's SEO score
+							estimatedReadTime: extractedReadTime !== undefined ? extractedReadTime : this.calculateReadTime(extractedContent),
+							provider: providerInfo?.provider,
+							apiKey: providerInfo?.apiKey ? this.maskApiKey(providerInfo.apiKey) : undefined,
+							model: providerInfo?.model
+						};
+					} else {
+						logger.warn('Failed to extract content from JSON, content too short or missing', {
+							contentLength: extractedContent?.length || 0
+						});
+					}
+				}
+			}
+			
+			// If JSON parsing failed completely, check if raw text is usable
+			// But don't use raw JSON string as content
+			const isJsonString = cleanText.trim().startsWith('{') && cleanText.includes('"content"');
+			const isGenericContent = this.isGenericContent(cleanText, request.topic || '');
+			
+			let content: string;
+			let finalTitle: string;
+			
+			// If JSON parsing failed completely, log the actual response for debugging
+			if (isJsonString || isGenericContent || cleanText.length < 200) {
+				logger.error('AI response is invalid or too short', {
+					isJsonString,
+					isGenericContent,
+					textLength: cleanText.length,
+					actualResponse: cleanText.substring(0, 500) // Log actual response for debugging
+				});
+				throw new Error(`AI response is invalid or incomplete (length: ${cleanText.length} chars). The response might be truncated. Please try again.`);
+			} else {
+				// Use cleaned text directly (only if it's not JSON)
+				finalTitle = request.topic || 'Generated Title';
+				content = cleanText;
+			}
+
+			// Ensure excerpt doesn't exceed 500 characters
+			let excerpt = this.generateExcerpt(content);
+			if (excerpt.length > 500) {
+				excerpt = excerpt.substring(0, 497) + '...';
+			}
+			
+			return {
+				title: finalTitle,
+				content: content,
+				excerpt: excerpt,
+				metaDescription: this.generateMetaDescription(content),
+				metaTitle: finalTitle, // Meta title (default: same as title)
+				metaKeywords: undefined, // Meta keywords (optional, not available in fallback)
+				suggestedTags: this.extractTags(content),
+				suggestedCategory: this.getCategoryFromTopic(request.topic || finalTitle),
+				seoScore: 75,
+				estimatedReadTime: this.calculateReadTime(content),
+				provider: providerInfo?.provider,
+				apiKey: providerInfo?.apiKey ? this.maskApiKey(providerInfo.apiKey) : undefined,
+				model: providerInfo?.model
+			};
 		} catch (error) {
 			logger.error('Failed to parse content response:', error);
-			// Fallback to basic response
-			return {
-				title: request.title || request.topic || 'Generated Title',
-				content: text,
-				excerpt: this.generateExcerpt(text),
-				metaDescription: this.generateMetaDescription(text),
-				suggestedTags: this.extractTags(text),
-				suggestedCategory: 'General',
-				seoScore: 75,
-				estimatedReadTime: this.calculateReadTime(text)
-			};
+			// No fallback - throw error and let user retry
+			throw new Error('Failed to parse AI response. Please try again.');
 		}
 	}
 
@@ -1264,7 +1569,13 @@ Focus on relevant, specific tags that improve content discoverability.
 		
 		// Convert base64 to buffer and save to storage
 		const imageBuffer = Buffer.from(imageData, 'base64');
-		const savedImageUrl = await this.saveImageToStorage(imageBuffer);
+		// Convert Buffer to ArrayBuffer
+		const arrayBuffer = new ArrayBuffer(imageBuffer.length);
+		const view = new Uint8Array(arrayBuffer);
+		for (let i = 0; i < imageBuffer.length; i++) {
+			view[i] = imageBuffer[i];
+		}
+		const savedImageUrl = await this.saveImageToStorage(arrayBuffer);
 		
 		return {
 			imageUrl: savedImageUrl,
@@ -1448,14 +1759,26 @@ Focus on relevant, specific tags that improve content discoverability.
 
 	/**
 	 * Generate excerpt from content
+	 * Max length: 500 characters (to match post validation)
 	 */
 	private generateExcerpt(content: string): string {
-		// Remove markdown formatting and get first 200 words for better context
-		const cleanContent = content.replace(/[#*`_~]/g, '').trim();
-		const words = cleanContent.split(/\s+/);
+		// Remove HTML tags and markdown formatting
+		const cleanContent = content
+			.replace(/<[^>]*>/g, '') // Remove HTML tags
+			.replace(/[#*`_~]/g, '') // Remove markdown
+			.replace(/\s+/g, ' ') // Normalize whitespace
+			.trim();
 		
-		// Return first 200 words for better context, let frontend handle truncation
-		return words.slice(0, 200).join(' ');
+		// Get first 100 words (approximately 500 characters)
+		const words = cleanContent.split(/\s+/);
+		let excerpt = words.slice(0, 100).join(' ');
+		
+		// Ensure it doesn't exceed 500 characters
+		if (excerpt.length > 500) {
+			excerpt = excerpt.substring(0, 497) + '...';
+		}
+		
+		return excerpt;
 	}
 
 	/**
@@ -1487,602 +1810,67 @@ Focus on relevant, specific tags that improve content discoverability.
 	}
 
 	/**
+	 * Check if content is generic/template-like
+	 */
+	private isGenericContent(content: string, topic: string): boolean {
+		const contentLower = content.toLowerCase();
+		const topicLower = topic.toLowerCase();
+		
+		// Extract key words from topic
+		const topicWords = topicLower
+			.replace(/[^\w\s]/g, ' ')
+			.split(/\s+/)
+			.filter(word => word.length > 3);
+		
+		// Check if content contains topic-specific keywords
+		const hasTopicKeywords = topicWords.some(word => contentLower.includes(word));
+		
+		// Generic phrases that indicate template content
+		const genericPhrases = [
+			'very interesting and relevant topic',
+			'plays a very important role',
+			'various aspects related to',
+			'opens up various opportunities',
+			'let\'s look at some reasons',
+			'from a technical standpoint',
+			'can be applied in various contexts',
+			'if you\'re new to',
+			'for those already familiar',
+			'continues to evolve',
+			'very promising',
+			'key takeaways',
+			'call to action',
+			'halo pembaca',
+			'sangat menarik dan relevan',
+			'memiliki peran yang sangat penting',
+			'berbagai aspek terkait',
+			'membuka berbagai peluang',
+			'mari kita lihat',
+			'dari segi teknis',
+			'dapat diterapkan dalam',
+			'jika anda baru',
+			'bagi yang sudah',
+			'terus berkembang',
+			'sangat menjanjikan'
+		];
+		
+		// Check if content has too many generic phrases
+		const genericPhraseCount = genericPhrases.filter(phrase => contentLower.includes(phrase)).length;
+		const isTooGeneric = genericPhraseCount >= 3;
+		
+		// Content is generic if:
+		// 1. It doesn't contain topic keywords AND has many generic phrases
+		// 2. It has too many generic phrases (3 or more)
+		return (!hasTopicKeywords && genericPhraseCount >= 2) || isTooGeneric;
+	}
+
+	/**
 	 * Calculate estimated read time
 	 */
 	private calculateReadTime(content: string): number {
 		const wordsPerMinute = 200;
 		const wordCount = content.split(/\s+/).length;
 		return Math.ceil(wordCount / wordsPerMinute);
-	}
-
-	/**
-	 * Generate comprehensive content when AI response is not available
-	 */
-	private generateComprehensiveContent(request: IContentGenerationRequest, title: string): string {
-		const { topic, keywords, contentType, language } = request;
-		const lang = language === 'id' ? 'Indonesian' : 'English';
-		
-		// Generate content based on content type
-		switch (contentType) {
-			case 'tutorial':
-				return this.generateTutorialContent(title, topic, keywords, lang);
-			case 'blog':
-				return this.generateBlogContent(title, topic, keywords, lang);
-			case 'article':
-				return this.generateArticleContent(title, topic, keywords, lang);
-			case 'news':
-				return this.generateNewsContent(title, topic, keywords, lang);
-			case 'review':
-				return this.generateReviewContent(title, topic, keywords, lang);
-			default:
-				return this.generateDefaultContent(title, topic, keywords, lang);
-		}
-	}
-
-	/**
-	 * Generate tutorial content
-	 */
-	private generateTutorialContent(title: string, topic: string, keywords: string[], lang: string): string {
-		const keywordText = keywords ? keywords.join(', ') : '';
-		
-		return `# ${title}
-
-## Pengenalan
-
-${topic} adalah topik yang sangat penting untuk dipelajari, terutama bagi pemula. ${lang === 'id' ? 'Dalam tutorial ini' : 'In this tutorial'}, kita akan mempelajari ${topic} dari dasar hingga tingkat yang lebih lanjut.
-
-${keywordText ? `**Kata kunci yang akan dibahas:** ${keywordText}` : ''}
-
-## Yang Akan Anda Pelajari
-
-- Dasar-dasar ${topic}
-- Langkah-langkah praktis
-- Tips dan trik
-- Contoh implementasi
-- Troubleshooting umum
-
-## Persiapan
-
-Sebelum memulai, pastikan Anda memiliki:
-- Komputer dengan akses internet
-- Editor kode (VS Code, Sublime Text, atau yang lainnya)
-- Browser modern
-- Motivasi untuk belajar!
-
-## Langkah 1: Dasar-dasar
-
-Mari kita mulai dengan memahami konsep dasar dari ${topic}. Ini adalah fondasi yang penting untuk memahami topik yang lebih kompleks.
-
-### Konsep Utama
-
-1. **Definisi**: ${topic} adalah...
-2. **Manfaat**: Mengapa penting mempelajari ${topic}?
-3. **Aplikasi**: Di mana ${topic} digunakan?
-
-## Langkah 2: Implementasi Praktis
-
-Sekarang kita akan melihat contoh praktis dari ${topic}.
-
-### Contoh Sederhana
-
-\`\`\`javascript
-// Contoh kode sederhana
-console.log("Hello, ${topic}!");
-\`\`\`
-
-### Penjelasan Kode
-
-- Baris 1: Komentar yang menjelaskan kode
-- Baris 2: Implementasi dasar
-
-## Langkah 3: Tips dan Best Practices
-
-### Tips untuk Pemula
-
-1. **Mulai dari yang sederhana**: Jangan terburu-buru
-2. **Praktik secara konsisten**: Latihan setiap hari
-3. **Bergabung dengan komunitas**: Belajar dari yang lain
-4. **Buat proyek kecil**: Implementasikan apa yang dipelajari
-
-### Common Mistakes
-
-- Terlalu cepat ingin hasil
-- Tidak memahami dasar-dasar
-- Tidak praktik dengan cukup
-- Menyerah terlalu cepat
-
-## Langkah 4: Proyek Praktis
-
-Mari kita buat proyek sederhana untuk menerapkan ${topic}.
-
-### Proyek: [Nama Proyek Sederhana]
-
-**Tujuan**: Membuat aplikasi sederhana yang menggunakan ${topic}
-
-**Langkah-langkah**:
-1. Setup environment
-2. Buat struktur dasar
-3. Implementasi fitur utama
-4. Testing dan debugging
-5. Deployment
-
-## Troubleshooting
-
-### Masalah Umum
-
-**Problem**: Error saat menjalankan kode
-**Solution**: Periksa syntax dan pastikan semua dependencies terinstall
-
-**Problem**: Hasil tidak sesuai ekspektasi
-**Solution**: Debug step by step dan periksa logic
-
-## Kesimpulan
-
-${topic} adalah skill yang sangat berguna dan dapat dipelajari oleh siapa saja. Dengan konsistensi dan praktik yang cukup, Anda akan dapat menguasai ${topic} dengan baik.
-
-### Langkah Selanjutnya
-
-- Eksplorasi fitur-fitur lanjutan
-- Bergabung dengan komunitas
-- Buat proyek yang lebih kompleks
-- Bagikan pengetahuan dengan orang lain
-
-### Sumber Belajar Tambahan
-
-- Dokumentasi resmi
-- Video tutorial
-- Buku dan artikel
-- Komunitas online
-
----
-
-**Selamat belajar dan semoga sukses dengan ${topic}!** 🚀`;
-	}
-
-	/**
-	 * Generate blog content
-	 */
-	private generateBlogContent(title: string, topic: string, keywords: string[], lang: string): string {
-		const keywordText = keywords ? keywords.join(', ') : '';
-		
-		if (lang === 'English') {
-			return this.generateEnglishBlogContent(title, topic, keywordText);
-		}
-
-		return this.generateIndonesianBlogContent(title, topic, keywordText);
-	}
-
-	private generateEnglishBlogContent(title: string, topic: string, keywordText: string): string {
-		return `# ${title}
-
-## Introduction
-
-Hello readers! Today we will discuss ${topic}, a very interesting and relevant topic in today's digital era.
-
-${keywordText ? `In this article, we will explore various aspects related to ${keywordText}.` : ''}
-
-## Why is ${topic} Important?
-
-${topic} plays a very important role in our daily lives. Let's look at some reasons why this topic is worth learning and understanding.
-
-### 1. Relevance in the Modern Era
-
-In the rapidly evolving digital age, ${topic} becomes increasingly relevant and important. Many aspects of our lives are influenced by the development of ${topic}.
-
-### 2. Opportunities and Benefits
-
-Understanding ${topic} opens up various opportunities and benefits, both personally and professionally.
-
-## Important Aspects
-
-### Technical Aspects
-
-From a technical standpoint, ${topic} involves various components and concepts that need to be understood:
-
-- **Basics**: Strong foundation
-- **Implementation**: How to apply in practice
-- **Optimization**: How to get the best results
-
-### Practical Aspects
-
-Practically, ${topic} can be applied in various contexts:
-
-- **Daily use**: Applications in life
-- **Professional development**: Career advancement
-- **Innovation**: Creating new solutions
-
-## Tips and Suggestions
-
-### For Beginners
-
-If you're new to ${topic}, here are some tips that can help:
-
-1. **Start from the basics**: Don't rush
-2. **Consistency**: Learn regularly
-3. **Practice**: Apply what you learn
-4. **Community**: Join relevant communities
-
-### For Experienced Users
-
-For those already familiar with ${topic}, consider:
-
-- **Exploring advanced aspects**
-- **Sharing knowledge**
-- **Mentoring others**
-- **Exploring latest innovations**
-
-## Trends and Future
-
-### Current Trends
-
-${topic} continues to evolve with exciting new trends:
-
-- **Latest technology**: Innovations that change how we work
-- **New methodologies**: More effective approaches
-- **Tools and platforms**: Tools that make implementation easier
-
-### Future Predictions
-
-Looking ahead, ${topic} will continue to develop with:
-
-- **Better integration**
-- **More sophisticated automation**
-- **Wider accessibility**
-
-## Conclusion
-
-${topic} is a very interesting topic with great potential for the future. With good understanding and proper implementation, we can leverage ${topic} to achieve various goals.
-
-### Key Takeaways
-
-- ${topic} plays an important role in the modern era
-- Good understanding opens up various opportunities
-- Consistency and practice are the keys to success
-- The future of ${topic} is very promising
-
-### Call to Action
-
-Let's start learning ${topic} more deeply and apply it in our lives. Share your experience in the comments and don't hesitate to ask if there's anything you'd like to discuss!
-
----
-
-**Thank you for reading this article. Hope it's useful!** 🙏`;
-	}
-
-	private generateIndonesianBlogContent(title: string, topic: string, keywordText: string): string {
-		return `# ${title}
-
-## Pengantar
-
-Halo pembaca! Hari ini kita akan membahas tentang ${topic}, sebuah topik yang sangat menarik dan relevan di era digital saat ini.
-
-${keywordText ? `Dalam artikel ini, kita akan mengeksplorasi berbagai aspek terkait ${keywordText}.` : ''}
-
-## Mengapa ${topic} Penting?
-
-${topic} memiliki peran yang sangat penting dalam kehidupan kita sehari-hari. Mari kita lihat beberapa alasan mengapa topik ini layak untuk dipelajari dan dipahami.
-
-### 1. Relevansi di Era Modern
-
-Di era digital yang terus berkembang, ${topic} menjadi semakin relevan dan penting. Banyak aspek kehidupan kita yang dipengaruhi oleh perkembangan ${topic}.
-
-### 2. Peluang dan Manfaat
-
-Memahami ${topic} membuka berbagai peluang dan manfaat, baik secara personal maupun profesional.
-
-## Aspek-Aspek Penting
-
-### Aspek Teknis
-
-Dari segi teknis, ${topic} melibatkan berbagai komponen dan konsep yang perlu dipahami:
-
-- **Dasar-dasar**: Fondasi yang kuat
-- **Implementasi**: Cara menerapkan dalam praktik
-- **Optimasi**: Cara mendapatkan hasil terbaik
-
-### Aspek Praktis
-
-Secara praktis, ${topic} dapat diterapkan dalam berbagai konteks:
-
-- **Penggunaan sehari-hari**: Aplikasi dalam kehidupan
-- **Pengembangan profesional**: Peningkatan karir
-- **Inovasi**: Menciptakan solusi baru
-
-## Tips dan Saran
-
-### Untuk Pemula
-
-Jika Anda baru memulai dengan ${topic}, berikut beberapa tips yang bisa membantu:
-
-1. **Mulai dari dasar**: Jangan terburu-buru
-2. **Konsistensi**: Belajar secara teratur
-3. **Praktik**: Terapkan apa yang dipelajari
-4. **Komunitas**: Bergabung dengan komunitas yang relevan
-
-### Untuk yang Sudah Berpengalaman
-
-Bagi yang sudah familiar dengan ${topic}, pertimbangkan untuk:
-
-- **Mendalami aspek lanjutan**
-- **Berbagi pengetahuan**
-- **Mentoring orang lain**
-- **Eksplorasi inovasi terbaru**
-
-## Tren dan Masa Depan
-
-### Tren Saat Ini
-
-${topic} terus berkembang dengan tren-tren baru yang menarik:
-
-- **Teknologi terbaru**: Inovasi yang mengubah cara kerja
-- **Metodologi baru**: Pendekatan yang lebih efektif
-- **Tools dan platform**: Alat yang memudahkan implementasi
-
-### Prediksi Masa Depan
-
-Melihat ke depan, ${topic} akan terus berkembang dengan:
-
-- **Integrasi yang lebih baik**
-- **Automasi yang lebih canggih**
-- **Aksesibilitas yang lebih luas**
-
-## Kesimpulan
-
-${topic} adalah topik yang sangat menarik dan memiliki potensi besar untuk masa depan. Dengan pemahaman yang baik dan implementasi yang tepat, kita dapat memanfaatkan ${topic} untuk mencapai berbagai tujuan.
-
-### Key Takeaways
-
-- ${topic} memiliki peran penting di era modern
-- Pemahaman yang baik membuka berbagai peluang
-- Konsistensi dan praktik adalah kunci sukses
-- Masa depan ${topic} sangat menjanjikan
-
-### Call to Action
-
-Mari kita mulai mempelajari ${topic} lebih dalam dan menerapkannya dalam kehidupan kita. Bagikan pengalaman Anda di komentar dan jangan ragu untuk bertanya jika ada yang ingin didiskusikan!
-
----
-
-**Terima kasih telah membaca artikel ini. Semoga bermanfaat!** 🙏`;
-	}
-
-	/**
-	 * Generate article content
-	 */
-	private generateArticleContent(title: string, topic: string, keywords: string[], lang: string): string {
-		return this.generateBlogContent(title, topic, keywords, lang);
-	}
-
-	/**
-	 * Generate news content
-	 */
-	private generateNewsContent(title: string, topic: string, keywords: string[], _lang: string): string {
-		const keywordText = keywords ? keywords.join(', ') : '';
-		
-		return `# ${title}
-
-## Berita Terkini
-
-${topic} menjadi topik yang sedang hangat dibicarakan dalam beberapa waktu terakhir. ${keywordText ? `Berbagai aspek terkait ${keywordText} menjadi sorotan utama.` : ''}
-
-## Latar Belakang
-
-Perkembangan ${topic} telah menunjukkan tren yang sangat positif dalam beberapa tahun terakhir. Hal ini tidak lepas dari berbagai faktor pendukung yang memungkinkan ${topic} berkembang pesat.
-
-### Faktor Pendukung
-
-1. **Teknologi yang semakin maju**
-2. **Dukungan dari berbagai pihak**
-3. **Kebutuhan yang terus meningkat**
-4. **Inovasi yang berkelanjutan**
-
-## Dampak dan Implikasi
-
-### Dampak Positif
-
-${topic} membawa berbagai dampak positif:
-
-- **Efisiensi yang meningkat**
-- **Kualitas yang lebih baik**
-- **Aksesibilitas yang lebih luas**
-- **Biaya yang lebih terjangkau**
-
-### Tantangan yang Dihadapi
-
-Meskipun memiliki banyak keuntungan, ${topic} juga menghadapi beberapa tantangan:
-
-- **Kurva pembelajaran yang curam**
-- **Investasi awal yang besar**
-- **Resistensi terhadap perubahan**
-- **Kebutuhan infrastruktur yang memadai**
-
-## Respons dari Berbagai Pihak
-
-### Pemerintah
-
-Pemerintah telah menunjukkan dukungan yang positif terhadap perkembangan ${topic} dengan berbagai kebijakan dan program yang mendukung.
-
-### Sektor Swasta
-
-Perusahaan-perusahaan swasta juga turut berkontribusi dalam pengembangan ${topic} melalui investasi dan inovasi.
-
-### Masyarakat
-
-Masyarakat umum mulai menunjukkan antusiasme yang tinggi terhadap ${topic}, terlihat dari tingkat adopsi yang terus meningkat.
-
-## Prospek ke Depan
-
-### Prediksi Jangka Pendek
-
-Dalam 1-2 tahun ke depan, ${topic} diperkirakan akan mengalami:
-
-- **Pertumbuhan yang stabil**
-- **Adopsi yang lebih luas**
-- **Inovasi yang berkelanjutan**
-
-### Visi Jangka Panjang
-
-Dalam 5-10 tahun ke depan, ${topic} diharapkan dapat:
-
-- **Menjadi standar industri**
-- **Memberikan dampak yang lebih besar**
-- **Menciptakan peluang baru**
-
-## Kesimpulan
-
-${topic} terus menunjukkan potensi yang besar untuk masa depan. Dengan dukungan dari berbagai pihak dan inovasi yang berkelanjutan, ${topic} diharapkan dapat memberikan kontribusi yang signifikan.
-
----
-
-**Sumber**: Berbagai sumber terpercaya
-**Tanggal**: ${new Date().toLocaleDateString('id-ID')}
-**Kategori**: ${topic}`;
-	}
-
-	/**
-	 * Generate review content
-	 */
-	private generateReviewContent(title: string, topic: string, keywords: string[], _lang: string): string {
-		const keywordText = keywords ? keywords.join(', ') : '';
-		
-		return `# ${title}
-
-## Review Lengkap
-
-${topic} adalah salah satu topik yang patut untuk diulas secara mendalam. ${keywordText ? `Dalam review ini, kita akan membahas berbagai aspek terkait ${keywordText}.` : ''}
-
-## Overview
-
-${topic} telah menjadi bagian penting dalam berbagai aspek kehidupan. Mari kita lihat secara detail apa yang membuat ${topic} begitu menarik dan layak untuk dipelajari.
-
-## Aspek Positif
-
-### Kelebihan Utama
-
-1. **Fleksibilitas**: ${topic} dapat diterapkan dalam berbagai konteks
-2. **Skalabilitas**: Dapat dikembangkan sesuai kebutuhan
-3. **Komunitas**: Dukungan komunitas yang kuat
-4. **Dokumentasi**: Dokumentasi yang lengkap dan mudah dipahami
-
-### Fitur Unggulan
-
-- **User-friendly**: Mudah digunakan
-- **Powerful**: Kuat dan efektif
-- **Flexible**: Fleksibel dan dapat disesuaikan
-- **Reliable**: Dapat diandalkan
-
-## Aspek yang Perlu Diperhatikan
-
-### Kekurangan
-
-1. **Learning curve**: Memerlukan waktu untuk menguasai
-2. **Resource intensive**: Membutuhkan sumber daya yang cukup
-3. **Complexity**: Kompleksitas yang tinggi
-4. **Dependencies**: Ketergantungan pada komponen lain
-
-### Tantangan
-
-- **Setup yang rumit**
-- **Debugging yang sulit**
-- **Performance issues**
-- **Compatibility problems**
-
-## Perbandingan dengan Alternatif
-
-### vs [Alternatif 1]
-
-**${topic}** memiliki keunggulan dalam:
-- Aspek A
-- Aspek B
-- Aspek C
-
-**Kekurangan**:
-- Aspek D
-- Aspek E
-
-### vs [Alternatif 2]
-
-**${topic}** lebih baik dalam:
-- Fitur X
-- Performa Y
-- Kemudahan Z
-
-**Kurang baik dalam**:
-- Aspek P
-- Aspek Q
-
-## Use Cases dan Aplikasi
-
-### Ideal untuk
-
-- **Project A**: Sangat cocok untuk proyek jenis ini
-- **Project B**: Memberikan hasil yang optimal
-- **Project C**: Solusi yang tepat
-
-### Tidak Cocok untuk
-
-- **Project X**: Memerlukan pendekatan yang berbeda
-- **Project Y**: Ada alternatif yang lebih baik
-- **Project Z**: Terlalu kompleks untuk kebutuhan sederhana
-
-## Rating dan Penilaian
-
-### Overall Rating: 4.2/5
-
-**Breakdown**:
-- **Fitur**: 4.5/5
-- **Kemudahan**: 3.8/5
-- **Dokumentasi**: 4.0/5
-- **Komunitas**: 4.5/5
-- **Performansi**: 4.0/5
-
-## Rekomendasi
-
-### Untuk Pemula
-
-Jika Anda baru memulai dengan ${topic}:
-
-- **Mulai dengan tutorial dasar**
-- **Bergabung dengan komunitas**
-- **Praktik dengan proyek sederhana**
-- **Jangan terburu-buru**
-
-### Untuk Developer Berpengalaman
-
-Bagi yang sudah berpengalaman:
-
-- **Eksplorasi fitur lanjutan**
-- **Kontribusi ke komunitas**
-- **Buat proyek yang kompleks**
-- **Bagikan pengalaman**
-
-## Kesimpulan
-
-${topic} adalah pilihan yang solid dengan banyak keunggulan. Meskipun memiliki beberapa kekurangan, kelebihannya jauh lebih banyak dan dapat memberikan nilai yang signifikan.
-
-### Final Verdict
-
-**Rekomendasi**: ✅ **Highly Recommended**
-
-${topic} layak untuk dipelajari dan digunakan, terutama jika sesuai dengan kebutuhan dan tujuan Anda.
-
-### Next Steps
-
-1. **Coba dengan proyek kecil**
-2. **Bergabung dengan komunitas**
-3. **Eksplorasi dokumentasi**
-4. **Bagikan pengalaman**
-
----
-
-**Disclaimer**: Review ini berdasarkan pengalaman pribadi dan riset yang dilakukan. Hasil mungkin berbeda tergantung pada konteks dan kebutuhan spesifik.`;
-	}
-
-	/**
-	 * Generate default content
-	 */
-	private generateDefaultContent(title: string, topic: string, keywords: string[], lang: string): string {
-		return this.generateBlogContent(title, topic, keywords, lang);
 	}
 
 	/**
@@ -2311,6 +2099,204 @@ Please provide the response in the following JSON format:
 		}
 
 		return tags;
+	}
+
+	/**
+	 * Test Zenmux API to see response format
+	 * Documentation: https://docs.zenmux.ai/guide/quickstart.html
+	 * @param prompt - The prompt to send to ZenMux
+	 * @param model - Optional model name (format: "provider/model-name"). Default: "openai/gpt-4o-mini"
+	 */
+	async testZenmuxAPI(prompt: string, model?: string): Promise<any> {
+		try {
+			const ZENMUX_API_KEY = 'sk-ai-v1-e81eab413add52c02c22adc89e96f62b49ada81d493f7aafe6b68d6bea66b674';
+			// Correct endpoint according to ZenMux documentation
+			const ZENMUX_API_URL = 'https://zenmux.ai/api/v1/chat/completions';
+			
+			// Use model from parameter or default
+			// Note: Some models require credits (error 402). Try different models if you get credit error.
+			// Available models can be checked at: https://zenmux.ai/models
+			// Common models to try: "openai/gpt-4o-mini", "openai/gpt-3.5-turbo", "anthropic/claude-3-haiku"
+			const selectedModel = model || 'z-ai/glm-4.6v-flash';
+			
+			logger.info('Testing Zenmux API...', { 
+				promptLength: prompt.length,
+				model: selectedModel
+			});
+			
+			const response = await fetch(ZENMUX_API_URL, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${ZENMUX_API_KEY}`
+				},
+				body: JSON.stringify({
+					// Model format must be "provider/model-name" according to ZenMux docs
+					// Examples: "openai/gpt-5", "anthropic/claude-sonnet-4.5"
+					model: selectedModel,
+					messages: [
+						{
+							role: 'user',
+							content: prompt
+						}
+					],
+					temperature: 0.7,
+					max_tokens: 2000
+				})
+			});
+			
+			if (!response.ok) {
+				const errorText = await response.text();
+				let errorData;
+				try {
+					errorData = JSON.parse(errorText);
+				} catch {
+					errorData = { raw: errorText };
+				}
+				
+				logger.error('Zenmux API error:', {
+					status: response.status,
+					statusText: response.statusText,
+					error: errorData
+				});
+				
+				// Provide more helpful error message
+				if (errorData.error?.code === 'invalid_model') {
+					throw new Error(`Model "${selectedModel}" tidak valid. Silakan gunakan model yang tersedia di ZenMux. Contoh: "openai/gpt-5", "anthropic/claude-sonnet-4.5". Error detail: ${errorText}`);
+				}
+				
+				// Handle credit/balance required error
+				if (errorData.error?.code === '402' || errorData.error?.type === 'reject_no_credit' || response.status === 402) {
+					const errorMsg = `⚠️ Akun ZenMux memerlukan credit/balance untuk menggunakan model "${selectedModel}".\n\n` +
+						'Solusi:\n' +
+						'1. Top up credit di dashboard ZenMux: https://zenmux.ai\n' +
+						'2. Atau coba model lain dengan mengirim parameter "model" di request body\n' +
+						'3. Atau gunakan Gemini API (default) yang masih memiliki free tier\n\n' +
+						`Error detail: ${errorData.error?.message || errorText}`;
+					throw new Error(errorMsg);
+				}
+				
+				throw new Error(`Zenmux API error: ${response.status} ${response.statusText} - ${errorText}`);
+			}
+			
+			const data = await response.json();
+			logger.info('Zenmux API response received', {
+				hasChoices: !!data.choices,
+				choicesLength: data.choices?.length || 0,
+				responseKeys: Object.keys(data),
+				model: data.model
+			});
+			
+			return data;
+		} catch (error) {
+			logger.error('Zenmux API test failed:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Generate content using ZenMux API as fallback
+	 * This method will be used when Gemini API fails
+	 * Note: ZenMux requires credits/balance in the account
+	 */
+	async generateContentWithZenmux(request: IContentGenerationRequest, model?: string): Promise<IContentGenerationResponse> {
+		try {
+			const ZENMUX_API_KEY = 'sk-ai-v1-e81eab413add52c02c22adc89e96f62b49ada81d493f7aafe6b68d6bea66b674';
+			const ZENMUX_API_URL = 'https://zenmux.ai/api/v1/chat/completions';
+			
+			// Use model from parameter or default
+			const selectedModel = model || 'kuaishou/kat-coder-pro-v1';
+			
+			// Translate topic and keywords if generating English content
+			let finalTopic = request.topic;
+			let finalKeywords = request.keywords || [];
+			
+			if (request.language === 'en') {
+				const translation = this.translateToEnglish(request.topic, request.keywords || []);
+				finalTopic = translation.translatedTopic;
+				finalKeywords = translation.translatedKeywords;
+			}
+			
+			// Build the same prompt as Gemini
+			const prompt = this.buildContentPrompt(request);
+			
+			logger.info('Generating content with ZenMux API (fallback)...', {
+				originalTopic: request.topic,
+				translatedTopic: finalTopic,
+				contentType: request.contentType,
+				language: request.language,
+				model: selectedModel
+			});
+			
+			const response = await fetch(ZENMUX_API_URL, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${ZENMUX_API_KEY}`
+				},
+				body: JSON.stringify({
+					model: selectedModel,
+					messages: [
+						{
+							role: 'user',
+							content: prompt
+						}
+					],
+					temperature: 0.7,
+					max_tokens: 16384 // Same as Gemini max tokens
+				})
+			});
+			
+			if (!response.ok) {
+				const errorText = await response.text();
+				let errorData;
+				try {
+					errorData = JSON.parse(errorText);
+				} catch {
+					errorData = { raw: errorText };
+				}
+				
+				logger.error('ZenMux API error during content generation:', {
+					status: response.status,
+					error: errorData
+				});
+				
+				// Handle credit/balance required error
+				if (errorData.error?.code === '402' || errorData.error?.type === 'reject_no_credit' || response.status === 402) {
+					throw new Error(`ZenMux memerlukan credit/balance. Silakan top up credit di https://zenmux.ai atau gunakan Gemini API. Error: ${errorData.error?.message || errorText}`);
+				}
+				
+				throw new Error(`ZenMux API error: ${response.status} ${response.statusText} - ${errorText}`);
+			}
+			
+			const data = await response.json();
+			const zenmuxContent = data.choices?.[0]?.message?.content || '';
+			
+			logger.info('ZenMux content generated successfully', {
+				contentLength: zenmuxContent.length,
+				model: data.model
+			});
+			
+			// Create modified request with translated topic/keywords for response
+			const modifiedRequest = {
+				...request,
+				topic: finalTopic,
+				keywords: finalKeywords
+			};
+			
+			// Add provider info for ZenMux (use existing ZENMUX_API_KEY from above)
+			const providerInfo = {
+				provider: 'zenmux' as const,
+				apiKey: ZENMUX_API_KEY,
+				model: selectedModel
+			};
+			
+			// Parse the response using the same parser as Gemini
+			return this.parseContentResponse(zenmuxContent, modifiedRequest, providerInfo);
+		} catch (error) {
+			logger.error('ZenMux content generation failed:', error);
+			throw error;
+		}
 	}
 }
 

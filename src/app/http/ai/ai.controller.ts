@@ -137,11 +137,40 @@ const getContentSuggestions: TRequestFunction = async (req) => {
 	};
 };
 
+/**
+ * Test Zenmux API
+ */
+const testZenmux: TRequestFunction = async (req) => {
+	const { prompt, model } = req.body;
+	
+	if (!prompt) {
+		throw new InvalidParameterException('Prompt is required');
+	}
+	
+	// Optional model parameter (format: "provider/model-name")
+	// Examples: "openai/gpt-4o-mini", "openai/gpt-3.5-turbo", "anthropic/claude-3-haiku"
+	// If not provided, will use default: "openai/gpt-4o-mini"
+	// Note: Some models require credits (error 402). Check available models at https://zenmux.ai/models
+	const result = await aiService.testZenmuxAPI(prompt, model);
+	
+	return {
+		message: 'Zenmux API test completed',
+		result: {
+			rawResponse: result,
+			content: result.choices?.[0]?.message?.content || result.content || 'No content found',
+			model: result.model || 'unknown',
+			usage: result.usage || null,
+			usedModel: model || 'openai/gpt-4o-mini (default)'
+		}
+	};
+};
+
 export default {
 	generateContent,
 	optimizeSEO,
 	generateImage,
 	autoTagging,
 	getStatus,
-	getContentSuggestions
+	getContentSuggestions,
+	testZenmux
 };

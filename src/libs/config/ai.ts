@@ -15,7 +15,8 @@ export const AI_CONFIG = {
 	GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
 	
 	// Content Generation Settings
-	MAX_TOKENS: parseInt(process.env.AI_MAX_TOKENS || '2048'),
+	MAX_TOKENS: parseInt(process.env.AI_MAX_TOKENS || '8192'), // Increased for longer content
+	MAX_TOKENS_CONTENT: parseInt(process.env.AI_MAX_TOKENS_CONTENT || '16384'), // For full article generation
 	TEMPERATURE: parseFloat(process.env.AI_TEMPERATURE || '0.7'),
 	
 	// Image Generation Settings
@@ -37,6 +38,17 @@ export const getTextModel = () => {
 		model: AI_CONFIG.GEMINI_MODEL,
 		generationConfig: {
 			maxOutputTokens: AI_CONFIG.MAX_TOKENS,
+			temperature: AI_CONFIG.TEMPERATURE,
+		}
+	});
+};
+
+// Get text generation model with higher token limit for content generation
+export const getTextModelForContent = () => {
+	return genAI.getGenerativeModel({ 
+		model: AI_CONFIG.GEMINI_MODEL,
+		generationConfig: {
+			maxOutputTokens: AI_CONFIG.MAX_TOKENS_CONTENT,
 			temperature: AI_CONFIG.TEMPERATURE,
 		}
 	});
@@ -71,6 +83,7 @@ export default {
 	AI_CONFIG,
 	genAI,
 	getTextModel,
+	getTextModelForContent,
 	getImageModel,
 	validateAIConfig
 };

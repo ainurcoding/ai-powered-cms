@@ -52,3 +52,15 @@ export class InternalServerException extends AppException {
 	}
 }
 
+export class QuotaExceededException extends AppException {
+	constructor(message: string = 'Quota exceeded') {
+		super(message, 429); // 429 Too Many Requests
+	}
+}
+
+export class ServiceUnavailableException extends AppException {
+	constructor(message: string = 'Service unavailable') {
+		super(message, 503);
+	}
+}
+

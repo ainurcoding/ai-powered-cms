@@ -507,4 +507,48 @@ router.post('/ai/auto-tagging', authorizeMiddleware, requestValidator({ requestT
  */
 router.get('/ai/content-suggestions', authorizeMiddleware, requestValidator({ requestType: 'query', type: request.createContentSuggestionsQueryValidation }), requestHandler(aiController.getContentSuggestions));
 
+/**
+ * @swagger
+ * /ai/test-zenmux:
+ *   post:
+ *     summary: Test Zenmux API response format
+ *     tags: [AI]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - prompt
+ *             properties:
+ *               prompt:
+ *                 type: string
+ *                 description: Test prompt to send to Zenmux API
+ *                 example: "Buat artikel tentang teknologi AI"
+ *               model:
+ *                 type: string
+ *                 description: Optional model name in format "provider/model-name". If not provided, defaults to "openai/gpt-4o-mini". Note: Some models require credits (error 402).
+ *                 example: "openai/gpt-4o-mini"
+ *     responses:
+ *       200:
+ *         description: Zenmux API test response
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 result:
+ *                   type: object
+ *       400:
+ *         description: Bad request
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/ai/test-zenmux', authorizeMiddleware, requestHandler(aiController.testZenmux));
+
 export default router;
